@@ -3,7 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { createClient } from "@/lib/supabase/client";
 import { flushQueuedLogs, queueLog } from "@/lib/offline-queue";
 import { DOG_PROFILE_STORAGE_KEY } from "@/lib/meal-utils";
-import type { Dog, DogMember, MealLog, Profile, Schedule } from "./types";
+import type { AppNotification, Dog, DogMember, MealLog, Profile, Schedule } from "./types";
+import { captureSupabaseError } from "@/lib/sentry-reporter";
 
 type Store = {
   currentUserId: string;
@@ -13,6 +14,7 @@ type Store = {
   schedules: Schedule[];
   logs: MealLog[];
   members: DogMember[];
+  notifications: AppNotification[];
   pendingCount: number;
   isOnline: boolean;
   isLoading: boolean;
@@ -31,17 +33,50 @@ type Store = {
   removeMember: (dogId: string, userId: string) => void;
   setMemberRole: (dogId: string, userId: string, role: "member" | "editor" | "viewer") => void;
   profileFor: (id: string) => Profile | undefined;
+  markNotificationAsRead: (id: string) => Promise<void>;
 };
 
 const Context = createContext<Store | null>(null);
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-/** Build a signed URL for a storage path (1-hour TTL). */
-async function signedUrl(s: ReturnType<typeof createClient>, path: string | null): Promise<string | null> {
-  if (!path) return null;
-  const { data } = await s.storage.from("dog-photos").createSignedUrl(path, 3600);
-  return data?.signedUrl ?? null;
+const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+
+async function getCachedSignedUrl(
+  client: ReturnType<typeof createClient>,
+  bucket: "dog-photos" | "meal-photos",
+  storagePath: string | null
+): Promise<string | null> {
+  if (!storagePath) return null;
+  if (storagePath.startsWith("http://") || storagePath.startsWith("https://") || storagePath.startsWith("data:")) {
+    return storagePath;
+  }
+
+  const cacheKey = `${bucket}:${storagePath}`;
+  const now = Date.now();
+  const cached = signedUrlCache.get(cacheKey);
+  if (cached && cached.expiresAt > now + 60000) {
+    return cached.url;
+  }
+
+  try {
+    const { data, error } = await client.storage.from(bucket).createSignedUrl(storagePath, 3600);
+    if (error || !data?.signedUrl) {
+      const altBucket = bucket === "dog-photos" ? "meal-photos" : "dog-photos";
+      const altResult = await client.storage.from(altBucket).createSignedUrl(storagePath, 3600);
+      if (altResult.data?.signedUrl) {
+        signedUrlCache.set(cacheKey, { url: altResult.data.signedUrl, expiresAt: now + 3500000 });
+        return altResult.data.signedUrl;
+      }
+      return null;
+    }
+
+    signedUrlCache.set(cacheKey, { url: data.signedUrl, expiresAt: now + 3500000 });
+    return data.signedUrl;
+  } catch (err) {
+    captureSupabaseError(err, { operation: "storage", targetName: bucket });
+    return null;
+  }
 }
 
 /** Map a raw DB log row to a MealLog, injecting signed photo URL. */
@@ -69,6 +104,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [logs, setLogs] = useState<MealLog[]>([]);
   const [members, setMembers] = useState<DogMember[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [userId, setUserId] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -84,10 +120,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     const timeout = setTimeout(() => setIsLoading(false), 8000);
     try {
       const s = createClient();
-      // Use getSession() so we verify the active session and token immediately
       const { data: { session } } = await s.auth.getSession();
       if (!session || !session.user) {
-        // No session yet: keep state clean and stop
         setIsLoading(false);
         clearTimeout(timeout);
         return;
@@ -97,40 +131,32 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setUserId(user.id);
       setUserEmail(user.email || "");
 
-      const [d, sc, l] = await Promise.all([
+      const [d, sc, l, notifRes] = await Promise.all([
         s.from("dogs").select("*"),
         s.from("schedules").select("id,dog_id,label,time"),
         s.from("logs").select("*").order("at", { ascending: false }),
+        s.from("notifications").select("*").order("created_at", { ascending: false }).limit(50),
       ]);
 
       if (d.error) {
-        console.error("[getDogs/load] Error fetching dogs from Supabase:", d.error.message, d.error);
+        captureSupabaseError(d.error, { operation: "select", targetName: "dogs", userId: user.id });
       }
       if (sc.error) {
-        console.error("[getSchedules/load] Error fetching schedules from Supabase:", sc.error.message, sc.error);
+        captureSupabaseError(sc.error, { operation: "select", targetName: "schedules", userId: user.id });
       }
       if (l.error) {
-        console.error("[getLogs/load] Error fetching logs from Supabase:", l.error.message, l.error);
+        captureSupabaseError(l.error, { operation: "select", targetName: "logs", userId: user.id });
+      }
+      if (notifRes.error) {
+        captureSupabaseError(notifRes.error, { operation: "select", targetName: "notifications", userId: user.id });
       }
 
       const localProfiles = getLocalDogProfiles();
       const rawDogs = (d.data ?? []) as any[];
-      console.log("[getDogProfile/load]", {
-        user: user.id,
-        rawDogsCount: rawDogs.length,
-        rawDogs,
-        localProfiles,
-        dogsError: d.error?.message,
-      });
 
-      // Generate signed URLs for dog photos
+      // Generate cached signed URLs for dog profile photos
       const dogSigned = await Promise.all(
-        rawDogs.map((dog) => {
-          if (dog.photo && !dog.photo.startsWith("http") && !dog.photo.startsWith("data:")) {
-            return signedUrl(s, dog.photo);
-          }
-          return Promise.resolve(dog.photo);
-        })
+        rawDogs.map((dog) => getCachedSignedUrl(s, "dog-photos", dog.photo))
       );
 
       // Map DB dogs merged with localProfiles
@@ -148,7 +174,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         };
       });
 
-      // If local profiles contain newly added dog not yet returned by DB query (e.g. RLS replication delay)
+      // If local profiles contain newly added dog not yet returned by DB query
       Object.entries(localProfiles).forEach(([id, stored]) => {
         if (!seenDogIds.has(id) && stored.name) {
           dogRows.push({
@@ -164,11 +190,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
       setDogs(dogRows);
       setSchedules(sc.data ?? []);
+      setNotifications(notifRes.data ?? []);
       const logRows = l.data ?? [];
 
-      // Generate signed URLs in parallel for meal logs
+      // Generate cached signed URLs in parallel for meal photos
       const signed = await Promise.all(
-        logRows.map((row: any) => signedUrl(s, row.photo ?? null))
+        logRows.map((row: any) => getCachedSignedUrl(s, "meal-photos", row.photo ?? null))
       );
       setLogs(logRows.map((row: any, i: number) => mapLog(row, signed[i])));
 
@@ -272,6 +299,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       .channel("dogmeal-ui")
       .on("postgres_changes", { event: "*", schema: "public", table: "logs" }, debouncedLoad)
       .on("postgres_changes", { event: "*", schema: "public", table: "dogs" }, debouncedLoad)
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, debouncedLoad)
       .subscribe();
 
     return () => {
@@ -292,6 +320,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setSchedules([]);
     setLogs([]);
     setMembers([]);
+    setNotifications([]);
     setProfiles([]);
     setUserId("");
     setUserEmail("");
@@ -314,16 +343,26 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
         const preview = x.photo_after;
         if (preview?.startsWith("blob:") || preview?.startsWith("data:")) {
-          const blob = await fetch(preview).then((r) => r.blob());
-          const path = `${x.dog_id}/${crypto.randomUUID()}.jpg`;
-          const { error } = await s.storage
-            .from("dog-photos")
-            .upload(path, blob, { contentType: blob.type || "image/jpeg" });
-          if (!error) payload.photo = path;
+          try {
+            const blob = await fetch(preview).then((r) => r.blob());
+            const path = `${x.dog_id}/${crypto.randomUUID()}.jpg`;
+            const { error: uploadErr } = await s.storage
+              .from("meal-photos")
+              .upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: true });
+            if (!uploadErr) {
+              payload.photo = path;
+            } else {
+              captureSupabaseError(uploadErr, { operation: "storage", targetName: "meal-photos" });
+            }
+          } catch (storageErr) {
+            captureSupabaseError(storageErr, { operation: "storage", targetName: "meal-photos" });
+          }
         }
 
-        const { error } = await s.from("logs").insert(payload);
-        if (error) console.error("addLog insert error:", error.message);
+        const { error: insertErr } = await s.from("logs").insert(payload);
+        if (insertErr) {
+          captureSupabaseError(insertErr, { operation: "insert", targetName: "logs" });
+        }
         await load();
       };
 
@@ -367,23 +406,25 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           if ((x.photo_after?.startsWith("blob:") || x.photo_after?.startsWith("data:")) && x.dog_id) {
             const blob = await fetch(x.photo_after).then((r) => r.blob());
             const path = `${x.dog_id}/${crypto.randomUUID()}.jpg`;
-            const { error } = await s.storage
-              .from("dog-photos")
-              .upload(path, blob, { contentType: blob.type || "image/jpeg" });
-            if (!error) {
+            const { error: uploadErr } = await s.storage
+              .from("meal-photos")
+              .upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: true });
+            if (!uploadErr) {
               payload.photo = path;
             } else {
-              console.error("Storage upload error:", error);
+              captureSupabaseError(uploadErr, { operation: "storage", targetName: "meal-photos" });
             }
           } else if (x.photo_after === null) {
             payload.photo = null;
           }
 
-          const { error } = await s.from("logs").update(payload).eq("id", id);
-          if (error) console.error("updateLog error:", error.message);
+          const { error: updateErr } = await s.from("logs").update(payload).eq("id", id);
+          if (updateErr) {
+            captureSupabaseError(updateErr, { operation: "update", targetName: "logs" });
+          }
           await load();
         } catch (err) {
-          console.error("updateLog exception:", err);
+          captureSupabaseError(err, { operation: "update", targetName: "logs" });
         }
       })();
     },
@@ -394,10 +435,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     async (id: string) => {
       try {
         const { error } = await createClient().from("logs").delete().eq("id", id);
-        if (error) console.error("removeLog error:", error.message);
+        if (error) {
+          captureSupabaseError(error, { operation: "delete", targetName: "logs" });
+        }
         await load();
       } catch (err) {
-        console.error("removeLog exception:", err);
+        captureSupabaseError(err, { operation: "delete", targetName: "logs" });
       }
     },
     [load]
@@ -418,13 +461,33 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
+      let storagePhotoPath: string | null = null;
+      if (photo?.startsWith("blob:") || photo?.startsWith("data:")) {
+        try {
+          const blob = await fetch(photo).then((r) => r.blob());
+          const uploadPath = `avatars/${crypto.randomUUID()}.jpg`;
+          const { error: uploadErr } = await s.storage
+            .from("dog-photos")
+            .upload(uploadPath, blob, { contentType: blob.type || "image/jpeg", upsert: true });
+          if (!uploadErr) {
+            storagePhotoPath = uploadPath;
+          } else {
+            captureSupabaseError(uploadErr, { operation: "storage", targetName: "dog-photos" });
+          }
+        } catch (storageErr) {
+          captureSupabaseError(storageErr, { operation: "storage", targetName: "dog-photos" });
+        }
+      } else if (photo) {
+        storagePhotoPath = photo;
+      }
+
       const { data: createdDogRecord, error: rpcError } = await s.rpc("create_dog", {
         dog_name: cleanName,
-        dog_photo: photo || null,
+        dog_photo: storagePhotoPath,
       });
 
       if (rpcError) {
-        console.error("[saveDogProfile/addDog] RPC create_dog error:", rpcError.message, rpcError);
+        captureSupabaseError(rpcError, { operation: "rpc", targetName: "create_dog" });
         throw new Error(`ไม่สามารถสร้างข้อมูลน้องหมาในระบบได้: ${rpcError.message}`);
       }
 
@@ -437,18 +500,17 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
       const dogId = dogRow?.id;
       if (!dogId) {
-        console.error("[saveDogProfile/addDog] No ID returned from create_dog RPC:", createdDogRecord);
         throw new Error("ระบบไม่สามารถระบุ ID ของน้องหมาที่สร้างขึ้นได้");
       }
 
       const localProfiles = getLocalDogProfiles();
-      localProfiles[dogId] = { name: cleanName, breed, birthdate, photo };
+      localProfiles[dogId] = { name: cleanName, breed, birthdate, photo: storagePhotoPath };
       localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(localProfiles));
 
       const newDogEntity: Dog = {
         id: dogId,
         name: dogRow.name || cleanName,
-        photo: dogRow.photo ?? photo ?? null,
+        photo: dogRow.photo ?? storagePhotoPath ?? null,
         owner_id: dogRow.owner_id || currentUser.id,
         breed: breed || null,
         birthdate: birthdate || null,
@@ -641,6 +703,25 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     [load]
   );
 
+  const markNotificationAsRead = useCallback(async (notificationId: string) => {
+    try {
+      const s = createClient();
+      const { error } = await s
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("id", notificationId);
+      if (error) {
+        captureSupabaseError(error, { operation: "update", targetName: "notifications" });
+        return;
+      }
+      setNotifications((prev) =>
+        prev.map((item) => (item.id === notificationId ? { ...item, is_read: true } : item))
+      );
+    } catch (err) {
+      captureSupabaseError(err, { operation: "update", targetName: "notifications" });
+    }
+  }, []);
+
   // ─── context value ──────────────────────────────────────────────────────────
 
   const value = useMemo<Store>(
@@ -652,6 +733,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       schedules,
       logs,
       members,
+      notifications,
       pendingCount: pending,
       isOnline: online,
       isLoading,
@@ -669,13 +751,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       addMember,
       removeMember,
       setMemberRole,
+      markNotificationAsRead,
       profileFor: (id) => profiles.find((p) => p.id === id),
     }),
     [
-      userId, userEmail, profiles, dogs, schedules, logs, members,
+      userId, userEmail, profiles, dogs, schedules, logs, members, notifications,
       pending, online, isLoading,
       load, signOut, addLog, updateLog, removeLog, addDog, updateDog, removeDog, clearAllData,
-      addSchedule, removeSchedule, addMember, removeMember, setMemberRole,
+      addSchedule, removeSchedule, addMember, removeMember, setMemberRole, markNotificationAsRead,
     ]
   );
 

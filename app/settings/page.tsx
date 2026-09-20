@@ -149,6 +149,7 @@ export default function SettingsPage() {
     const nextVal = !notifyOnMissed
     setNotifyOnMissed(nextVal)
     localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, String(nextVal))
+    window.dispatchEvent(new Event("notifications-toggled"))
     toast.success(nextVal ? "เปิดการแจ้งเตือนแล้ว" : "ปิดการแจ้งเตือนแล้ว")
   }
 

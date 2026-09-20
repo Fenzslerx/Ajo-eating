@@ -9,6 +9,7 @@ import { DogHeader } from "@/components/dog-header"
 import { MealCard } from "@/components/meal-card"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { NotificationCenter } from "@/components/notification-center"
 import { useAppStore } from "@/lib/app-store"
 import {
   getActiveMealConfig,
@@ -103,13 +104,16 @@ function TodayPageContent() {
             {viewMode === "today" ? "วันนี้" : "ข้อมูลย้อนหลัง"}
           </h1>
         </div>
-        <Link
-          href="/log"
-          className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
-        >
-          <Plus className="size-4" />
-          ไปหน้าบันทึก
-        </Link>
+        <div className="flex items-center gap-2">
+          <NotificationCenter />
+          <Link
+            href="/log"
+            className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
+          >
+            <Plus className="size-4" />
+            ไปหน้าบันทึก
+          </Link>
+        </div>
       </header>
 
       {/* สลับดูวันนี้ กับ ดูข้อมูลย้อนหลัง */}

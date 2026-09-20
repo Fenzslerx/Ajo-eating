@@ -49,3 +49,14 @@ export type Profile = {
   name: string
   email: string
 }
+
+export type AppNotification = {
+  id: string
+  dog_id: string
+  user_id: string
+  meal_key: string
+  schedule_id: string | null
+  message: string
+  is_read: boolean
+  created_at: string
+}
