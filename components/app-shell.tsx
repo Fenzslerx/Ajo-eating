@@ -11,7 +11,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const showChrome = !NO_CHROME_ROUTES.some((route) => pathname.startsWith(route))
 
   if (!showChrome) {
-    return <main className="mx-auto min-h-screen w-full max-w-md">{children}</main>
+    return <>{children}</>
   }
 
   return (

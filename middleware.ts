@@ -2,8 +2,10 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  // Bypass auth callback completely — let route handler set cookies first
-  if (request.nextUrl.pathname.startsWith("/auth")) {
+  const pathname = request.nextUrl.pathname;
+
+  // Always pass through: auth routes, static, api
+  if (pathname.startsWith("/auth")) {
     return NextResponse.next({ request });
   }
 
@@ -31,36 +33,35 @@ export async function middleware(request: NextRequest) {
       }
     );
 
-    // IMPORTANT: Do not remove this — refreshes session if expired
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
+    const isLogin = pathname === "/login";
 
-    const isLogin = request.nextUrl.pathname === "/login";
+    // Not logged in → go to login (but NOT if we just came from /auth/callback)
+    const referer = request.headers.get("referer") ?? "";
+    const comingFromCallback = referer.includes("/auth/callback");
 
-    if (!user && !isLogin) {
+    if (!user && !isLogin && !comingFromCallback) {
       const url = request.nextUrl.clone();
       url.pathname = "/login";
       const redirectResponse = NextResponse.redirect(url);
-      // Forward any updated cookies to the redirect
-      supabaseResponse.cookies.getAll().forEach((c) => {
-        redirectResponse.cookies.set(c.name, c.value, c);
-      });
+      supabaseResponse.cookies.getAll().forEach((c) =>
+        redirectResponse.cookies.set(c.name, c.value, c)
+      );
       return redirectResponse;
     }
 
+    // Already logged in → skip login page
     if (user && isLogin) {
       const url = request.nextUrl.clone();
       url.pathname = "/";
       const redirectResponse = NextResponse.redirect(url);
-      supabaseResponse.cookies.getAll().forEach((c) => {
-        redirectResponse.cookies.set(c.name, c.value, c);
-      });
+      supabaseResponse.cookies.getAll().forEach((c) =>
+        redirectResponse.cookies.set(c.name, c.value, c)
+      );
       return redirectResponse;
     }
   } catch {
-    // If anything fails (missing env vars, network error), let request through
-    // so the page itself can handle auth state
+    // Network/env error → let page handle auth
   }
 
   return supabaseResponse;
