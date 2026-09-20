@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  // Always pass through: auth routes, static, api
+  // Always bypass: auth flow, static assets
   if (pathname.startsWith("/auth")) {
     return NextResponse.next({ request });
   }
@@ -33,14 +33,13 @@ export async function middleware(request: NextRequest) {
       }
     );
 
-    const { data: { user } } = await supabase.auth.getUser();
+    // Use getSession() here — reads cookies directly, no network call
+    // Safe for middleware routing (not for data access)
+    const { data: { session } } = await supabase.auth.getSession();
     const isLogin = pathname === "/login";
 
-    // Not logged in → go to login (but NOT if we just came from /auth/callback)
-    const referer = request.headers.get("referer") ?? "";
-    const comingFromCallback = referer.includes("/auth/callback");
-
-    if (!user && !isLogin && !comingFromCallback) {
+    if (!session && !isLogin) {
+      // Not logged in → send to login
       const url = request.nextUrl.clone();
       url.pathname = "/login";
       const redirectResponse = NextResponse.redirect(url);
@@ -50,8 +49,8 @@ export async function middleware(request: NextRequest) {
       return redirectResponse;
     }
 
-    // Already logged in → skip login page
-    if (user && isLogin) {
+    if (session && isLogin) {
+      // Already logged in → skip login, go home
       const url = request.nextUrl.clone();
       url.pathname = "/";
       const redirectResponse = NextResponse.redirect(url);
@@ -61,7 +60,7 @@ export async function middleware(request: NextRequest) {
       return redirectResponse;
     }
   } catch {
-    // Network/env error → let page handle auth
+    // On error, let the page handle auth itself
   }
 
   return supabaseResponse;
