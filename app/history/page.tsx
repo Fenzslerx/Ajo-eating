@@ -147,32 +147,7 @@ export default function HistoryPage() {
                     <p>{selected.note}</p>
                   </div>
                 )}
-                {(selected.photo_before || selected.photo_after) && (
-                  <div className="grid grid-cols-2 gap-3">
-                    {selected.photo_before && (
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs text-muted-foreground">ก่อนกิน</span>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={selected.photo_before || "/placeholder.svg"}
-                          alt="รูปมื้ออาหารก่อนกิน"
-                          className="w-full rounded-xl border border-border object-cover"
-                        />
-                      </div>
-                    )}
-                    {selected.photo_after && (
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs text-muted-foreground">หลังกิน</span>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={selected.photo_after || "/placeholder.svg"}
-                          alt="รูปมื้ออาหารหลังกิน"
-                          className="w-full rounded-xl border border-border object-cover"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
+                {selected.photo_after && <div className="flex flex-col gap-1"><span className="text-xs text-muted-foreground">รูปหลังกิน</span><img src={selected.photo_after} alt="รูปมื้ออาหารหลังกิน" className="w-full rounded-xl border border-border object-cover" /></div>}
               </div>
             </>
           )}

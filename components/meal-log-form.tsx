@@ -30,7 +30,6 @@ export type MealLogFormValues = {
   amountG: string
   food: string
   note: string
-  photoBefore: string | null
   photoAfter: string | null
   at: string
 }
@@ -60,7 +59,6 @@ export function MealLogForm({
   const [amountG, setAmountG] = useState(initialValues?.amountG ?? "")
   const [food, setFood] = useState(initialValues?.food ?? "")
   const [note, setNote] = useState(initialValues?.note ?? "")
-  const [photoBefore, setPhotoBefore] = useState<string | null>(initialValues?.photoBefore ?? null)
   const [photoAfter, setPhotoAfter] = useState<string | null>(initialValues?.photoAfter ?? null)
   const [at, setAt] = useState(
     initialValues?.at ? toLocalInputValue(initialValues.at) : toLocalInputValue(new Date().toISOString()),
@@ -80,7 +78,6 @@ export function MealLogForm({
           amountG,
           food,
           note,
-          photoBefore,
           photoAfter,
           at: new Date(at).toISOString(),
         })
@@ -190,10 +187,7 @@ export function MealLogForm({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <PhotoPicker id="photo-before" label="รูปก่อนกิน" value={photoBefore} onChange={setPhotoBefore} />
-        <PhotoPicker id="photo-after" label="รูปหลังกิน" value={photoAfter} onChange={setPhotoAfter} />
-      </div>
+      <PhotoPicker id="photo-after" label="รูปหลังกิน" value={photoAfter} onChange={setPhotoAfter} />
 
       <Button type="submit" size="lg" className="min-h-12 rounded-full" disabled={!dogId}>
         {submitLabel}
