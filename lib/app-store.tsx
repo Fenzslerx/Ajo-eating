@@ -405,85 +405,60 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   const addDog = useCallback(
     async (name: string, photo?: string | null, breed?: string | null, birthdate?: string | null): Promise<Dog | null> => {
-      try {
-        const s = createClient();
-        const { data: { session } } = await s.auth.getSession();
-        if (!session?.user) {
-          console.warn("[saveDogProfile/addDog] No active session found");
-          return null;
-        }
-
-        const newDogId = crypto.randomUUID();
-        console.log("[saveDogProfile/addDog] Creating dog with id:", newDogId, {
-          name,
-          owner_id: session.user.id,
-        });
-
-        // 1. Insert into Supabase dogs table with explicit ID
-        const { data: insertedList, error: dogInsertError } = await s
-          .from("dogs")
-          .insert({
-            id: newDogId,
-            name,
-            photo: photo || null,
-            owner_id: session.user.id,
-          })
-          .select();
-
-        if (dogInsertError) {
-          console.error("[saveDogProfile/addDog] Supabase dogs insert error:", dogInsertError.message, dogInsertError);
-          throw new Error(`ไม่สามารถสร้างข้อมูลน้องหมาในระบบได้: ${dogInsertError.message}`);
-        }
-
-        const effectiveId = insertedList?.[0]?.id || newDogId;
-
-        // 2. Explicitly ensure membership in dog_members with role 'owner' (upsert to prevent duplicate if trigger ran)
-        const { error: memberInsertError } = await s
-          .from("dog_members")
-          .upsert({
-            dog_id: effectiveId,
-            user_id: session.user.id,
-            role: "owner",
-          }, { onConflict: "dog_id,user_id" });
-
-        if (memberInsertError) {
-          console.error("[saveDogProfile/addDog] dog_members upsert error:", memberInsertError.message);
-          // Rollback orphan dog row to avoid orphan records in dogs table
-          await s.from("dogs").delete().eq("id", effectiveId);
-          throw new Error(`ไม่สามารถสร้างสิทธิ์เจ้าของน้องหมาได้: ${memberInsertError.message}`);
-        }
-
-        console.log("[saveDogProfile/addDog] dog and dog_members created successfully:", {
-          dogId: effectiveId,
-          userId: session.user.id,
-        });
-
-        // 3. Persist extended profile in localStorage (dogProfile)
-        const local = getLocalDogProfiles();
-        local[effectiveId] = { name, breed, birthdate, photo };
-        localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
-
-        // 4. Optimistically add to state immediately
-        const newDogObj: Dog = {
-          id: effectiveId,
-          name,
-          photo: photo || null,
-          owner_id: session.user.id,
-          breed: breed || null,
-          birthdate: birthdate || null,
-        };
-        setDogs((prev) => [...prev.filter((d) => d.id !== effectiveId), newDogObj]);
-
-        // Dispatch profile event so other tabs and components know
-        window.dispatchEvent(new CustomEvent("dog-profile-changed", { detail: { id: effectiveId, name } }));
-
-        // 5. Reload all store data to sync
-        await load();
-        return newDogObj;
-      } catch (err) {
-        console.error("[saveDogProfile/addDog] Exception:", err);
-        throw err;
+      const cleanName = name.trim();
+      if (!cleanName) {
+        throw new Error("กรุณาระบุชื่อน้องหมา");
       }
+
+      const s = createClient();
+      const { data: sessionData } = await s.auth.getSession();
+      const currentUser = sessionData?.session?.user;
+      if (!currentUser) {
+        console.warn("[saveDogProfile/addDog] No active session found");
+        return null;
+      }
+
+      const { data: createdDogRecord, error: rpcError } = await s.rpc("create_dog", {
+        dog_name: cleanName,
+        dog_photo: photo || null,
+      });
+
+      if (rpcError) {
+        console.error("[saveDogProfile/addDog] RPC create_dog error:", rpcError.message, rpcError);
+        throw new Error(`ไม่สามารถสร้างข้อมูลน้องหมาในระบบได้: ${rpcError.message}`);
+      }
+
+      const dogRow = (Array.isArray(createdDogRecord) ? createdDogRecord[0] : createdDogRecord) as {
+        id?: string;
+        name?: string;
+        photo?: string | null;
+        owner_id?: string;
+      } | null;
+
+      const dogId = dogRow?.id;
+      if (!dogId) {
+        console.error("[saveDogProfile/addDog] No ID returned from create_dog RPC:", createdDogRecord);
+        throw new Error("ระบบไม่สามารถระบุ ID ของน้องหมาที่สร้างขึ้นได้");
+      }
+
+      const localProfiles = getLocalDogProfiles();
+      localProfiles[dogId] = { name: cleanName, breed, birthdate, photo };
+      localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(localProfiles));
+
+      const newDogEntity: Dog = {
+        id: dogId,
+        name: dogRow.name || cleanName,
+        photo: dogRow.photo ?? photo ?? null,
+        owner_id: dogRow.owner_id || currentUser.id,
+        breed: breed || null,
+        birthdate: birthdate || null,
+      };
+
+      setDogs((prevDogs) => [...prevDogs.filter((existingDog) => existingDog.id !== dogId), newDogEntity]);
+      window.dispatchEvent(new CustomEvent("dog-profile-changed", { detail: { id: dogId, name: cleanName } }));
+
+      await load();
+      return newDogEntity;
     },
     [load]
   );
