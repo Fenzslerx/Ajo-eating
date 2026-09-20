@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+:root { color-scheme: light; }
+body { background: #fffaf5; color: #3f3028; font-family: Arial, "Noto Sans Thai", sans-serif; }
+input, button { font: inherit; }
+button, a, select, input, textarea { -webkit-tap-highlight-color: transparent; }
