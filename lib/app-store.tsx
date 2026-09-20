@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { flushQueuedLogs, queueLog } from "@/lib/offline-queue";
 import type { Dog, DogMember, MealLog, Profile, Schedule } from "./types";
@@ -28,7 +28,24 @@ type Store = {
 };
 
 const Context = createContext<Store | null>(null);
-const mapLog = (row: any, photo?: string | null): MealLog => ({ ...row, photo_before: null, photo_after: photo ?? null });
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+/** Build a signed URL for a storage path (1-hour TTL). */
+async function signedUrl(s: ReturnType<typeof createClient>, path: string | null): Promise<string | null> {
+  if (!path) return null;
+  const { data } = await s.storage.from("dog-photos").createSignedUrl(path, 3600);
+  return data?.signedUrl ?? null;
+}
+
+/** Map a raw DB log row to a MealLog, injecting signed photo URL. */
+const mapLog = (row: any, photo: string | null): MealLog => ({
+  ...row,
+  photo_before: null,
+  photo_after: photo,
+});
+
+// ─── provider ─────────────────────────────────────────────────────────────────
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [dogs, setDogs] = useState<Dog[]>([]);
@@ -40,6 +57,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Debounce ref for realtime reload
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -62,24 +82,21 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setSchedules(sc.data ?? []);
       const logRows = l.data ?? [];
 
+      // Generate signed URLs in parallel
       const signed = await Promise.all(
-        logRows.map(async (row: any) =>
-          row.photo
-            ? (await s.storage.from("dog-photos").createSignedUrl(row.photo, 3600)).data?.signedUrl ?? null
-            : null
-        )
+        logRows.map((row: any) => signedUrl(s, row.photo ?? null))
       );
-      setLogs(logRows.map((row: any, index: number) => mapLog(row, signed[index])));
+      setLogs(logRows.map((row: any, i: number) => mapLog(row, signed[i])));
 
       if (dogRows.length > 0) {
         const groups = await Promise.all(
           dogRows.map(async (dog) => {
             const res = await s.rpc("get_dog_members", { target_dog_id: dog.id });
-            return res.data ?? [];
+            return (res.data ?? []) as any[];
           })
         );
-        const all = groups.flatMap((group, index) =>
-          (group as any[]).map((member: any) => ({ ...member, dog_id: dogRows[index]?.id }))
+        const all = groups.flatMap((group, i) =>
+          group.map((member: any) => ({ ...member, dog_id: dogRows[i]?.id }))
         );
         setMembers(all);
         setProfiles(
@@ -100,9 +117,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  /** Debounced reload — prevents rapid-fire realtime events from hammering DB */
+  const debouncedLoad = useCallback(() => {
+    if (reloadTimer.current) clearTimeout(reloadTimer.current);
+    reloadTimer.current = setTimeout(() => void load(), 500);
+  }, [load]);
+
   useEffect(() => {
     void load();
     setOnline(navigator.onLine);
+
     const up = () => {
       setOnline(true);
       void flushQueuedLogs().then(load);
@@ -114,15 +138,18 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     const s = createClient();
     const ch = s
       .channel("dogmeal-ui")
-      .on("postgres_changes", { event: "*", schema: "public", table: "logs" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "logs" }, debouncedLoad)
       .subscribe();
 
     return () => {
       removeEventListener("online", up);
       removeEventListener("offline", down);
+      if (reloadTimer.current) clearTimeout(reloadTimer.current);
       s.removeChannel(ch);
     };
-  }, [load]);
+  }, [load, debouncedLoad]);
+
+  // ─── mutations ──────────────────────────────────────────────────────────────
 
   const addLog = useCallback(
     (x: Omit<MealLog, "id" | "by">) => {
@@ -137,6 +164,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           food: x.food,
           note: x.note,
         };
+
         const preview = x.photo_after;
         if (preview?.startsWith("blob:")) {
           const blob = await fetch(preview).then((r) => r.blob());
@@ -145,10 +173,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             .from("dog-photos")
             .upload(path, blob, { contentType: blob.type || "image/jpeg" });
           if (!error) payload.photo = path;
-        } else if (!preview) {
-          payload.photo = null;
         }
-        await s.from("logs").insert(payload);
+
+        const { error } = await s.from("logs").insert(payload);
+        if (error) console.error("addLog insert error:", error.message);
         await load();
       };
 
@@ -173,29 +201,35 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const updateLog = useCallback(
     (id: string, x: Partial<MealLog>) => {
       void (async () => {
-        const s = createClient();
-        const payload: any = {};
-        if (x.dog_id !== undefined) payload.dog_id = x.dog_id;
-        if (x.schedule_id !== undefined) payload.schedule_id = x.schedule_id;
-        if (x.at !== undefined) payload.at = x.at;
-        if (x.status !== undefined) payload.status = x.status;
-        if (x.amount_g !== undefined) payload.amount_g = x.amount_g;
-        if (x.food !== undefined) payload.food = x.food;
-        if (x.note !== undefined) payload.note = x.note;
+        try {
+          const s = createClient();
+          const payload: any = {};
+          if (x.dog_id !== undefined) payload.dog_id = x.dog_id;
+          if (x.schedule_id !== undefined) payload.schedule_id = x.schedule_id;
+          if (x.at !== undefined) payload.at = x.at;
+          if (x.status !== undefined) payload.status = x.status;
+          if (x.amount_g !== undefined) payload.amount_g = x.amount_g;
+          if (x.food !== undefined) payload.food = x.food;
+          if (x.note !== undefined) payload.note = x.note;
 
-        if (x.photo_after?.startsWith("blob:")) {
-          const blob = await fetch(x.photo_after).then((r) => r.blob());
-          const path = `${x.dog_id || "photos"}/${crypto.randomUUID()}.jpg`;
-          const { error } = await s.storage
-            .from("dog-photos")
-            .upload(path, blob, { contentType: blob.type || "image/jpeg" });
-          if (!error) payload.photo = path;
-        } else if (x.photo_after === null) {
-          payload.photo = null;
+          if (x.photo_after?.startsWith("blob:") && x.dog_id) {
+            // Only upload if we have a valid dog_id (required by RLS policy)
+            const blob = await fetch(x.photo_after).then((r) => r.blob());
+            const path = `${x.dog_id}/${crypto.randomUUID()}.jpg`;
+            const { error } = await s.storage
+              .from("dog-photos")
+              .upload(path, blob, { contentType: blob.type || "image/jpeg" });
+            if (!error) payload.photo = path;
+          } else if (x.photo_after === null) {
+            payload.photo = null;
+          }
+
+          const { error } = await s.from("logs").update(payload).eq("id", id);
+          if (error) console.error("updateLog error:", error.message);
+          await load();
+        } catch (err) {
+          console.error("updateLog exception:", err);
         }
-
-        await s.from("logs").update(payload).eq("id", id);
-        await load();
       })();
     },
     [load]
@@ -203,63 +237,139 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   const removeLog = useCallback(
     (id: string) => {
-      void createClient().from("logs").delete().eq("id", id).then(load);
+      void (async () => {
+        try {
+          const { error } = await createClient().from("logs").delete().eq("id", id);
+          if (error) console.error("removeLog error:", error.message);
+          await load();
+        } catch (err) {
+          console.error("removeLog exception:", err);
+        }
+      })();
     },
     [load]
   );
 
   const addDog = useCallback(
     (name: string) => {
-      void createClient()
-        .auth.getUser()
-        .then(({ data }) => data.user && createClient().from("dogs").insert({ name, owner_id: data.user.id }).then(load));
+      void (async () => {
+        try {
+          const s = createClient();
+          const { data } = await s.auth.getUser();
+          if (!data.user) return;
+          const { error } = await s.from("dogs").insert({ name, owner_id: data.user.id });
+          if (error) console.error("addDog error:", error.message);
+          await load();
+        } catch (err) {
+          console.error("addDog exception:", err);
+        }
+      })();
     },
     [load]
   );
 
   const removeDog = useCallback(
     (id: string) => {
-      void createClient().from("dogs").delete().eq("id", id).then(load);
+      void (async () => {
+        try {
+          const { error } = await createClient().from("dogs").delete().eq("id", id);
+          if (error) console.error("removeDog error:", error.message);
+          await load();
+        } catch (err) {
+          console.error("removeDog exception:", err);
+        }
+      })();
     },
     [load]
   );
 
   const addSchedule = useCallback(
     (x: Omit<Schedule, "id">) => {
-      void createClient().from("schedules").insert(x).then(load);
+      void (async () => {
+        try {
+          const { error } = await createClient().from("schedules").insert(x);
+          if (error) console.error("addSchedule error:", error.message);
+          await load();
+        } catch (err) {
+          console.error("addSchedule exception:", err);
+        }
+      })();
     },
     [load]
   );
 
   const removeSchedule = useCallback(
     (id: string) => {
-      void createClient().from("schedules").delete().eq("id", id).then(load);
+      void (async () => {
+        try {
+          const { error } = await createClient().from("schedules").delete().eq("id", id);
+          if (error) console.error("removeSchedule error:", error.message);
+          await load();
+        } catch (err) {
+          console.error("removeSchedule exception:", err);
+        }
+      })();
     },
     [load]
   );
 
   const addMember = useCallback(
     (dogId: string, email: string) => {
-      void createClient().rpc("invite_dog_member", { target_dog_id: dogId, member_email: email }).then(load);
+      void (async () => {
+        try {
+          const { error } = await createClient().rpc("invite_dog_member", {
+            target_dog_id: dogId,
+            member_email: email,
+          });
+          if (error) console.error("addMember error:", error.message);
+          await load();
+        } catch (err) {
+          console.error("addMember exception:", err);
+        }
+      })();
     },
     [load]
   );
 
   const removeMember = useCallback(
-    (dogId: string, userId: string) => {
-      void createClient().from("dog_members").delete().eq("dog_id", dogId).eq("user_id", userId).then(load);
+    (dogId: string, uid: string) => {
+      void (async () => {
+        try {
+          const { error } = await createClient()
+            .from("dog_members")
+            .delete()
+            .eq("dog_id", dogId)
+            .eq("user_id", uid);
+          if (error) console.error("removeMember error:", error.message);
+          await load();
+        } catch (err) {
+          console.error("removeMember exception:", err);
+        }
+      })();
     },
     [load]
   );
 
   const setMemberRole = useCallback(
-    (dogId: string, userId: string, role: "member" | "editor" | "viewer") => {
-      void createClient()
-        .rpc("set_dog_member_role", { target_dog_id: dogId, target_user_id: userId, target_role: role })
-        .then(load);
+    (dogId: string, uid: string, role: "member" | "editor" | "viewer") => {
+      void (async () => {
+        try {
+          const { error } = await createClient().rpc("set_dog_member_role", {
+            target_dog_id: dogId,
+            target_user_id: uid,
+            target_role: role,
+          });
+          if (error) console.error("setMemberRole error:", error.message);
+          await load();
+        } catch (err) {
+          console.error("setMemberRole exception:", err);
+        }
+      })();
     },
     [load]
   );
+
+  // ─── context value ──────────────────────────────────────────────────────────
 
   const value = useMemo<Store>(
     () => ({
@@ -285,25 +395,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       profileFor: (id) => profiles.find((p) => p.id === id),
     }),
     [
-      userId,
-      profiles,
-      dogs,
-      schedules,
-      logs,
-      members,
-      pending,
-      online,
-      isLoading,
-      addLog,
-      updateLog,
-      removeLog,
-      addDog,
-      removeDog,
-      addSchedule,
-      removeSchedule,
-      addMember,
-      removeMember,
-      setMemberRole,
+      userId, profiles, dogs, schedules, logs, members,
+      pending, online, isLoading,
+      addLog, updateLog, removeLog, addDog, removeDog,
+      addSchedule, removeSchedule, addMember, removeMember, setMemberRole,
     ]
   );
 
