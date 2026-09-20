@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   const code = requestUrl.searchParams.get("code");
   const next = requestUrl.searchParams.get("next") ?? "/";
 
-  // Handle reverse proxies (e.g. Vercel) where requestUrl.origin is localhost
+  // On Vercel, use x-forwarded-host for the real public origin
   const forwardedHost = request.headers.get("x-forwarded-host");
   const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
   const isLocalEnv = process.env.NODE_ENV === "development";
@@ -18,11 +18,16 @@ export async function GET(request: Request) {
       ? `${forwardedProto}://${forwardedHost}`
       : requestUrl.origin;
 
-  const redirectTo = `${origin}${next.startsWith("/") ? next : `/${next}`}`;
+  if (!code) {
+    console.error("No code in auth callback");
+    return NextResponse.redirect(`${origin}/login?error=no_code`);
+  }
 
-  if (code) {
+  try {
     const cookieStore = await cookies();
-    const response = NextResponse.redirect(redirectTo);
+    const response = NextResponse.redirect(
+      `${origin}${next.startsWith("/") ? next : `/${next}`}`
+    );
 
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -34,7 +39,11 @@ export async function GET(request: Request) {
           },
           setAll(cookiesToSet) {
             cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options);
+              try {
+                cookieStore.set(name, value, options);
+              } catch {
+                // ignore set errors from Server Components
+              }
               response.cookies.set(name, value, options);
             });
           },
@@ -43,13 +52,15 @@ export async function GET(request: Request) {
     );
 
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      return response;
+
+    if (error) {
+      console.error("exchangeCodeForSession error:", error.message);
+      return NextResponse.redirect(`${origin}/login?error=exchange_failed`);
     }
 
-    console.error("Supabase auth callback error:", error);
+    return response;
+  } catch (err) {
+    console.error("Auth callback exception:", err);
+    return NextResponse.redirect(`${origin}/login?error=exception`);
   }
-
-  return NextResponse.redirect(`${origin}/login?error=auth`);
 }
-
