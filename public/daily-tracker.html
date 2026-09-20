@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Daily Tracker — บันทึกประจำวัน</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #fbf7f4;
+      --surface: #ffffff;
+      --surface-subtle: #f7ede5;
+      --text-main: #2d2420;
+      --text-muted: #7d6b63;
+      --primary: #f97316;
+      --primary-hover: #ea580c;
+      --primary-light: #ffedd5;
+      --border: #f0dfd5;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 2px 8px rgba(45, 36, 32, 0.04);
+      --shadow-md: 0 8px 24px rgba(45, 36, 32, 0.08);
+      --status-finished-bg: #dcfce7;
+      --status-finished-text: #15803d;
+      --status-partial-bg: #ffedd5;
+      --status-partial-text: #c2410c;
+      --status-none-bg: #fee2e2;
+      --status-none-text: #b91c1c;
+      --transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      font-family: 'Kanit', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding-bottom: 60px;
+    }
+
+    .app-container {
+      width: 100%;
+      max-width: 480px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 16px 40px;
+    }
+
+    /* Header */
+    header {
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--primary-light);
+      color: var(--primary);
+      padding: 3px 8px;
+      border-radius: 999px;
+    }
+
+    /* Navigation Tabs */
+    .tab-nav {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      background: var(--surface-subtle);
+      padding: 4px;
+      border-radius: var(--radius-md);
+      margin-bottom: 20px;
+      gap: 4px;
+    }
+
+    .tab-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-weight: 500;
+      font-size: 15px;
+      padding: 10px 0;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .tab-btn.active {
+      background: var(--surface);
+      color: var(--primary);
+      font-weight: 600;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Card Panels */
+    .panel {
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .panel.active {
+      display: flex;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .date-tag {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    /* Forms */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .form-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-main);
+    }
+
+    .status-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+
+    .status-opt {
+      position: relative;
+    }
+
+    .status-opt input {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .status-chip {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 4px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--surface-subtle);
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      text-align: center;
+      gap: 4px;
+    }
+
+    .status-opt input:checked + .status-chip {
+      border-color: var(--primary);
+      background: var(--primary-light);
+      color: var(--primary);
+      font-weight: 600;
+      box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2);
+    }
+
+    /* Photo Picker */
+    .photo-preview-box {
+      width: 100%;
+      height: 220px;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-md);
+      background: var(--surface-subtle);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .photo-preview-box:hover {
+      border-color: var(--primary);
+    }
+
+    .photo-preview-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+
+    .photo-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .photo-placeholder svg {
+      width: 32px;
+      height: 32px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+    }
+
+    .photo-remove-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.6);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      font-size: 14px;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    textarea, input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: #fff;
+      font-size: 14px;
+      color: var(--text-main);
+      outline: none;
+      transition: var(--transition);
+    }
+
+    textarea:focus, input[type="text"]:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .btn-submit {
+      width: 100%;
+      padding: 14px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      box-shadow: 0 4px 12px rgba(249, 115, 22, 0.25);
+    }
+
+    .btn-submit:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-submit:active {
+      transform: scale(0.98);
+    }
+
+    /* History List */
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .history-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .history-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .history-thumb {
+      width: 60px;
+      height: 60px;
+      border-radius: var(--radius-sm);
+      object-fit: cover;
+      background: var(--surface-subtle);
+      flex-shrink: 0;
+    }
+
+    .history-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .history-date {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .history-preview {
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 999px;
+      width: fit-content;
+    }
+
+    .status-badge.finished {
+      background: var(--status-finished-bg);
+      color: var(--status-finished-text);
+    }
+
+    .status-badge.partial {
+      background: var(--status-partial-bg);
+      color: var(--status-partial-text);
+    }
+
+    .status-badge.none {
+      background: var(--status-none-bg);
+      color: var(--status-none-text);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    /* Modal / Readonly View */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      padding: 16px;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal-content {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 440px;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 20px;
+      box-shadow: var(--shadow-md);
+      position: relative;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .modal-title {
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .modal-close {
+      background: var(--surface-subtle);
+      border: none;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .readonly-banner {
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+
+    .readonly-field {
+      margin-bottom: 12px;
+    }
+
+    .readonly-field label {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .readonly-field p {
+      font-size: 14px;
+      color: var(--text-main);
+      background: var(--surface-subtle);
+      padding: 10px;
+      border-radius: var(--radius-sm);
+    }
+
+    .readonly-img {
+      width: 100%;
+      max-height: 240px;
+      object-fit: cover;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: rgba(45, 36, 32, 0.95);
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: var(--shadow-md);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 1000;
+      pointer-events: none;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <header>
+      <div class="brand-title">
+        <span>🐾 DailyMeal</span>
+        <span class="brand-badge">Tracker</span>
+      </div>
+      <div id="clockDisplay" style="font-size: 12px; color: var(--text-muted); font-weight: 500;"></div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" id="tabToday" onclick="AppUI.switchTab('today')">
+        📅 วันนี้
+      </button>
+      <button class="tab-btn" id="tabHistory" onclick="AppUI.switchTab('history')">
+        📜 ข้อมูลย้อนหลัง
+      </button>
+    </nav>
+
+    <!-- Panel 1: Today (Editable) -->
+    <section class="panel active" id="panelToday">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">บันทึกของวันนี้</div>
+          <div class="date-tag" id="todayDateLabel">กำลังโหลด...</div>
+        </div>
+
+        <form id="todayForm" onsubmit="AppUI.saveToday(event)">
+          <!-- Status -->
+          <div class="form-group">
+            <label class="form-label">สถานะการกิน / กิจกรรม</label>
+            <div class="status-group">
+              <label class="status-opt">
+                <input type="radio" name="status" value="finished" checked>
+                <div class="status-chip">
+                  <span>🍽️</span>
+                  <span>กินหมด</span>
+                </div>
+              </label>
+              <label class="status-opt">
+                <input type="radio" name="status" value="partial">
+                <div class="status-chip">
+                  <span>🥣</span>
+                  <span>กินบางส่วน</span>
+                </div>
+              </label>
+              <label class="status-opt">
+                <input type="radio" name="status" value="none">
+                <div class="status-chip">
+                  <span>❌</span>
+                  <span>ไม่กิน</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Photo Upload -->
+          <div class="form-group">
+            <label class="form-label">รูปภาพประกอบ</label>
+            <div class="photo-preview-box" id="photoBox" onclick="document.getElementById('photoInput').click()">
+              <div class="photo-placeholder" id="photoPlaceholder">
+                <svg viewBox="0 0 24 24">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                  <circle cx="12" cy="13" r="4"></circle>
+                </svg>
+                <span>แตะเพื่อถ่ายรูป / เลือกรูป</span>
+              </div>
+              <img id="todayImgPreview" alt="Preview">
+              <button type="button" class="photo-remove-btn" id="photoRemoveBtn" onclick="AppUI.removePhoto(event)">✕</button>
+            </div>
+            <input type="file" id="photoInput" accept="image/*" style="display: none;" onchange="AppUI.handlePhotoSelect(event)">
+          </div>
+
+          <!-- Notes -->
+          <div class="form-group">
+            <label class="form-label" for="notesInput">หมายเหตุ / ข้อมูลเพิ่มเติม</label>
+            <textarea id="notesInput" placeholder="เช่น อาหารเม็ด 80g + อกไก่ฉีก ร่าเริงดี..."></textarea>
+          </div>
+
+          <button type="submit" class="btn-submit">💾 บันทึกข้อมูลวันนี้</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Panel 2: History (Read-only) -->
+    <section class="panel" id="panelHistory">
+      <div class="history-list" id="historyContainer">
+        <!-- Dynamic History Items Loaded Here -->
+      </div>
+    </section>
+  </div>
+
+  <!-- Read-Only Modal -->
+  <div class="modal-backdrop" id="readonlyModal" onclick="AppUI.closeModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title" id="modalDateTitle">รายละเอียด</div>
+        <button class="modal-close" onclick="AppUI.closeModal()">✕</button>
+      </div>
+      <div class="readonly-banner">
+        🔒 บันทึกย้อนหลัง (ดูได้อย่างเดียว - ไม่สามารถแก้ไขได้)
+      </div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">บันทึกเรียบร้อย</div>
+
+  <script>
+    /**
+     * ==========================================
+     * 1. DATA LAYER (Data Storage & Isolation)
+     * ==========================================
+     * - แยกอิสระจาก UI พร้อมเชื่อมต่อ REST/GraphQL API ในอนาคต
+     * - เก็บข้อมูลแยกเป็น Record ตาม Key ของวันที่ (เช่น "2026-09-21")
+     * - ภาพถูก serialize เก็บเป็น Base64 Data URL ผูกติดกับ record นั้นๆ
+     */
+    const StorageService = {
+      PREFIX: "daily_tracker_record_",
+
+      // คืนค่าวันที่ปัจจุบันในรูปแบบ YYYY-MM-DD อิงตาม Local Time
+      getTodayKey() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      },
+
+      // ดึง Record ตาม Key วันที่
+      getRecord(dateKey) {
+        try {
+          const raw = localStorage.getItem(this.PREFIX + dateKey);
+          return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+          console.error("Storage read error:", e);
+          return null;
+        }
+      },
+
+      // บันทึก Record สำหรับวันนั้น
+      saveRecord(dateKey, data) {
+        try {
+          const record = {
+            dateKey: dateKey,
+            updatedAt: new Date().toISOString(),
+            status: data.status || 'finished',
+            notes: data.notes || '',
+            photoBase64: data.photoBase64 || null
+          };
+          localStorage.setItem(this.PREFIX + dateKey, JSON.stringify(record));
+          return record;
+        } catch (e) {
+          console.error("Storage write error:", e);
+          throw new Error("พื้นที่จัดเก็บเต็มหรือไม่สามารถบันทึกได้");
+        }
+      },
+
+      // ดึงรายการประวัติย้อนหลังทั้งหมด (เรียงจากล่าสุดไปเก่าสุด)
+      getAllHistory(excludeToday = false) {
+        const todayKey = this.getTodayKey();
+        const records = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(this.PREFIX)) {
+            const dateKey = key.replace(this.PREFIX, "");
+            if (excludeToday && dateKey === todayKey) continue;
+            const item = this.getRecord(dateKey);
+            if (item) records.push(item);
+          }
+        }
+        // เรียงจากวันที่ใหม่สุดไปเก่าสุด
+        records.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+        return records;
+      }
+    };
+
+    /**
+     * ==========================================
+     * 2. UI & CONTROLLER LAYER
+     * ==========================================
+     */
+    const AppUI = {
+      currentActiveDateKey: null,
+      currentPhotoBase64: null,
+
+      init() {
+        this.currentActiveDateKey = StorageService.getTodayKey();
+        this.renderDateLabels();
+        this.loadTodayData();
+        this.startMidnightCheckWatcher();
+      },
+
+      // แสดงวันที่ปัจจุบันในภาษาไทย
+      renderDateLabels() {
+        const now = new Date();
+        const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+        const thaiDate = now.toLocaleDateString('th-TH', options);
+        document.getElementById('todayDateLabel').textContent = thaiDate;
+        document.getElementById('clockDisplay').textContent = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      },
+
+      // สลับแท็บ วันนี้ / ข้อมูลย้อนหลัง
+      switchTab(tab) {
+        const tabToday = document.getElementById('tabToday');
+        const tabHistory = document.getElementById('tabHistory');
+        const panelToday = document.getElementById('panelToday');
+        const panelHistory = document.getElementById('panelHistory');
+
+        if (tab === 'today') {
+          tabToday.classList.add('active');
+          tabHistory.classList.remove('active');
+          panelToday.classList.add('active');
+          panelHistory.classList.remove('active');
+          this.loadTodayData();
+        } else {
+          tabHistory.classList.add('active');
+          tabToday.classList.remove('active');
+          panelHistory.classList.add('active');
+          panelToday.classList.remove('active');
+          this.renderHistoryList();
+        }
+      },
+
+      // โหลดข้อมูลของ "วันนี้" มาใส่ฟอร์ม
+      loadTodayData() {
+        const todayKey = StorageService.getTodayKey();
+        const record = StorageService.getRecord(todayKey);
+
+        const form = document.getElementById('todayForm');
+        if (record) {
+          const statusRadio = form.querySelector(`input[name="status"][value="${record.status}"]`);
+          if (statusRadio) statusRadio.checked = true;
+          document.getElementById('notesInput').value = record.notes || '';
+
+          if (record.photoBase64) {
+            this.setPhotoPreview(record.photoBase64);
+          } else {
+            this.clearPhotoPreview();
+          }
+        } else {
+          // ค่าเริ่มต้นถ้ายังไม่เคยบันทึก
+          form.querySelector('input[name="status"][value="finished"]').checked = true;
+          document.getElementById('notesInput').value = '';
+          this.clearPhotoPreview();
+        }
+      },
+
+      // จัดการเลือกรูปภาพ & แปลงเป็น Base64
+      handlePhotoSelect(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // บีบอัดรูปก่อนเก็บเพื่อประหยัด Storage
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 900;
+            const MAX_HEIGHT = 900;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+              }
+            } else {
+              if (height > MAX_HEIGHT) {
+                width *= MAX_HEIGHT / height;
+                height = MAX_HEIGHT;
+              }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+            AppUI.setPhotoPreview(compressedBase64);
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      },
+
+      setPhotoPreview(base64) {
+        this.currentPhotoBase64 = base64;
+        const img = document.getElementById('todayImgPreview');
+        const placeholder = document.getElementById('photoPlaceholder');
+        const removeBtn = document.getElementById('photoRemoveBtn');
+
+        img.src = base64;
+        img.style.display = 'block';
+        placeholder.style.display = 'none';
+        removeBtn.style.display = 'flex';
+      },
+
+      clearPhotoPreview() {
+        this.currentPhotoBase64 = null;
+        const img = document.getElementById('todayImgPreview');
+        const placeholder = document.getElementById('photoPlaceholder');
+        const removeBtn = document.getElementById('photoRemoveBtn');
+        const input = document.getElementById('photoInput');
+
+        img.src = '';
+        img.style.display = 'none';
+        placeholder.style.display = 'flex';
+        removeBtn.style.display = 'none';
+        input.value = '';
+      },
+
+      removePhoto(event) {
+        event.stopPropagation();
+        this.clearPhotoPreview();
+      },
+
+      // บันทึกข้อมูลวันนี้
+      saveToday(event) {
+        event.preventDefault();
+        const todayKey = StorageService.getTodayKey();
+        const status = document.querySelector('input[name="status"]:checked').value;
+        const notes = document.getElementById('notesInput').value.trim();
+
+        try {
+          StorageService.saveRecord(todayKey, {
+            status,
+            notes,
+            photoBase64: this.currentPhotoBase64
+          });
+          this.showToast("✅ บันทึกข้อมูลวันนี้เรียบร้อยแล้ว");
+        } catch (err) {
+          alert(err.message);
+        }
+      },
+
+      // แสดงประวัติย้อนหลัง (Read-only list)
+      renderHistoryList() {
+        const container = document.getElementById('historyContainer');
+        const historyRecords = StorageService.getAllHistory();
+
+        if (historyRecords.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div style="font-size: 32px; margin-bottom: 8px;">📭</div>
+              <div>ยังไม่มีบันทึกข้อมูลย้อนหลัง</div>
+            </div>
+          `;
+          return;
+        }
+
+        const todayKey = StorageService.getTodayKey();
+
+        container.innerHTML = historyRecords.map(item => {
+          const isToday = item.dateKey === todayKey;
+          const dateObj = new Date(item.dateKey + 'T00:00:00');
+          const dateStr = dateObj.toLocaleDateString('th-TH', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric'
+          });
+
+          const statusMap = {
+            finished: { label: 'กินหมด', class: 'finished' },
+            partial: { label: 'บางส่วน', class: 'partial' },
+            none: { label: 'ไม่กิน', class: 'none' }
+          };
+
+          const s = statusMap[item.status] || { label: item.status, class: 'partial' };
+          const imgThumb = item.photoBase64
+            ? `<img src="${item.photoBase64}" class="history-thumb" alt="photo">`
+            : `<div class="history-thumb" style="display:flex;align-items:center;justify-content:center;font-size:22px;">🍽️</div>`;
+
+          return `
+            <div class="history-card" onclick="AppUI.openReadOnlyModal('${item.dateKey}')">
+              ${imgThumb}
+              <div class="history-info">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span class="history-date">${dateStr} ${isToday ? '<span style="font-size:11px;color:var(--primary);">(วันนี้)</span>' : ''}</span>
+                  <span class="status-badge ${s.class}">${s.label}</span>
+                </div>
+                <div class="history-preview">${item.notes || 'ไม่มีหมายเหตุ'}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      },
+
+      // เปิด Modal รายละเอียด (Read-Only: ไม่มีปุ่มแก้ไขหรือลบ)
+      openReadOnlyModal(dateKey) {
+        const item = StorageService.getRecord(dateKey);
+        if (!item) return;
+
+        const dateObj = new Date(item.dateKey + 'T00:00:00');
+        const dateStr = dateObj.toLocaleDateString('th-TH', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        });
+
+        document.getElementById('modalDateTitle').textContent = dateStr;
+
+        const statusMap = {
+          finished: { label: 'กินหมด 🍽️', class: 'finished' },
+          partial: { label: 'กินบางส่วน 🥣', class: 'partial' },
+          none: { label: 'ไม่กิน ❌', class: 'none' }
+        };
+        const s = statusMap[item.status] || { label: item.status, class: 'partial' };
+
+        const modalBody = document.getElementById('modalBody');
+        modalBody.innerHTML = `
+          <div class="readonly-field">
+            <label>สถานะ</label>
+            <div><span class="status-badge ${s.class}" style="font-size: 13px; padding: 6px 12px;">${s.label}</span></div>
+          </div>
+
+          ${item.photoBase64 ? `
+            <div class="readonly-field">
+              <label>รูปภาพบันทึก</label>
+              <img src="${item.photoBase64}" class="readonly-img" alt="บันทึกภาพ">
+            </div>
+          ` : ''}
+
+          <div class="readonly-field">
+            <label>หมายเหตุ</label>
+            <p>${item.notes ? item.notes.replace(/\n/g, '<br>') : 'ไม่มีบันทึกเพิ่มเติม'}</p>
+          </div>
+
+          <div style="font-size: 11px; color: var(--text-muted); text-align: right; margin-top: 14px;">
+            บันทึกเมื่อ: ${new Date(item.updatedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.
+          </div>
+        `;
+
+        document.getElementById('readonlyModal').classList.add('open');
+      },
+
+      closeModal() {
+        document.getElementById('readonlyModal').classList.remove('open');
+      },
+
+      showToast(msg) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2500);
+      },
+
+      // ระบบตรวจจับการข้ามวัน (Midnight Transition Watcher)
+      // ตรวจสอบทุกๆ 30 วินาที หากวันที่เปลี่ยน หน้านี้จะรีเซ็ตอัตโนมัติทันที
+      startMidnightCheckWatcher() {
+        setInterval(() => {
+          const nowKey = StorageService.getTodayKey();
+          if (nowKey !== this.currentActiveDateKey) {
+            console.log("ข้ามวันใหม่แล้ว:", nowKey);
+            this.currentActiveDateKey = nowKey;
+            this.renderDateLabels();
+            // รีเซ็ต/โหลดข้อมูลสำหรับวันใหม่
+            this.loadTodayData();
+            this.showToast("🌅 เข้าสู่วันใหม่แล้ว สลับหน้าเป็นวันปัจจุบัน");
+          }
+        }, 30000);
+      }
+    };
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      AppUI.init();
+    });
+  </script>
+</body>
+</html>
