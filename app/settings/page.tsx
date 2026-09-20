@@ -37,6 +37,7 @@ export default function SettingsPage() {
     removeSchedule,
     addMember,
     removeMember,
+    setMemberRole,
     profileFor,
   } = useAppStore()
 
@@ -253,6 +254,7 @@ export default function SettingsPage() {
                   email={m.profile!.email}
                   role={m.role}
                   canManage={canManage}
+                  onRoleChange={(role) => { setMemberRole(activeDogId, m.user_id, role); toast.success(role === "viewer" ? "ตั้งเป็นดูอย่างเดียวแล้ว" : "อนุญาตให้เพิ่มข้อมูลแล้ว") }}
                   onRemove={() => removeMember(activeDogId, m.user_id)}
                 />
               ))}

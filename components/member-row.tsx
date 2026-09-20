@@ -18,12 +18,14 @@ export function MemberRow({
   role,
   canManage,
   onRemove,
+  onRoleChange,
 }: {
   name: string
   email: string
   role: MemberRole
   canManage: boolean
   onRemove?: () => void
+  onRoleChange?: (role: "member" | "editor" | "viewer") => void
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
@@ -37,7 +39,7 @@ export function MemberRow({
         <span className="truncate text-xs text-muted-foreground">{email}</span>
       </div>
       <Badge variant={role === "owner" ? "default" : "secondary"}>
-        {role === "owner" ? "เจ้าของ" : "สมาชิก"}
+        {role === "owner" ? "เจ้าของ" : role === "viewer" ? "ดูอย่างเดียว" : "แก้ไขได้"}
       </Badge>
       {canManage && role !== "owner" && (
         <DropdownMenu>
@@ -54,6 +56,8 @@ export function MemberRow({
             <MoreVertical className="size-4" aria-hidden="true" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onRoleChange?.("editor")}>อนุญาตให้เพิ่ม/แก้ไข</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onRoleChange?.("viewer")}>ดูอย่างเดียว</DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onClick={onRemove}>
               ลบสมาชิก
             </DropdownMenuItem>

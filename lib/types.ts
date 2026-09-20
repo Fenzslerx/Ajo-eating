@@ -30,7 +30,7 @@ export type MealLog = {
   by: string
 }
 
-export type MemberRole = "owner" | "member"
+export type MemberRole = "owner" | "member" | "editor" | "viewer"
 
 export type DogMember = {
   dog_id: string
