@@ -9,16 +9,12 @@ import { MealCard } from "@/components/meal-card"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useAppStore } from "@/lib/app-store"
-
-function isSameDate(a: string | Date, b: string | Date) {
-  const da = typeof a === "string" ? new Date(a) : a
-  const db = typeof b === "string" ? new Date(b) : b
-  return (
-    da.getFullYear() === db.getFullYear() &&
-    da.getMonth() === db.getMonth() &&
-    da.getDate() === db.getDate()
-  )
-}
+import {
+  MEAL_CONFIG,
+  getMealStatus,
+  getLogMealKey,
+  isSameBangkokDay,
+} from "@/lib/meal-utils"
 
 function formatThaiDate(date: Date) {
   return date.toLocaleDateString("th-TH", {
@@ -30,7 +26,7 @@ function formatThaiDate(date: Date) {
 }
 
 export default function TodayPage() {
-  const { dogs, schedules, logs, isLoading } = useAppStore()
+  const { dogs, logs, isLoading } = useAppStore()
   
   // View mode: "today" | "history"
   const [viewMode, setViewMode] = useState<"today" | "history">("today")
@@ -43,7 +39,7 @@ export default function TodayPage() {
   const [calendarOpen, setCalendarOpen] = useState(false)
 
   const activeDate = viewMode === "today" ? new Date() : historyDate
-  const selectedLogs = logs.filter((l) => isSameDate(l.at, activeDate))
+  const selectedLogs = logs.filter((l) => isSameBangkokDay(l.at, activeDate))
 
   if (isLoading) {
     return (
@@ -156,7 +152,7 @@ export default function TodayPage() {
               variant="ghost"
               size="icon"
               className="size-8"
-              disabled={isSameDate(new Date(), historyDate)}
+              disabled={isSameBangkokDay(new Date(), historyDate)}
               onClick={() => {
                 const next = new Date(historyDate)
                 next.setDate(next.getDate() + 1)
@@ -173,12 +169,8 @@ export default function TodayPage() {
       </div>
 
       {dogs.map((dog) => {
-        const dogSchedules = schedules.filter((s) => s.dog_id === dog.id)
         const dogLogsDay = selectedLogs.filter((l) => l.dog_id === dog.id)
         const latestLog = dogLogsDay[0] ?? null
-        const latestSchedule = latestLog
-          ? dogSchedules.find((s) => s.id === latestLog.schedule_id) ?? null
-          : null
 
         return (
           <section key={dog.id} className="flex flex-col gap-3" aria-label={`มื้ออาหารของ${dog.name}`}>
@@ -186,33 +178,24 @@ export default function TodayPage() {
               name={dog.name}
               photo={dog.photo}
               latestLog={latestLog}
-              latestSchedule={latestSchedule}
             />
 
-            {dogSchedules.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">
-                <p>ยังไม่มีมื้ออาหาร</p>
-                <Link
-                  href="/settings"
-                  className="mt-2 inline-flex items-center gap-1 font-medium text-primary underline underline-offset-2"
-                >
-                  <Plus className="size-4" /> ไปที่ตั้งค่าเพื่อเพิ่มมื้อเช้า/เย็น
-                </Link>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {dogSchedules.map((schedule) => {
-                  const log = dogLogsDay.find((l) => l.schedule_id === schedule.id) ?? null
-                  return (
-                    <MealCard
-                      key={schedule.id}
-                      schedule={schedule}
-                      log={log}
-                    />
-                  )
-                })}
-              </div>
-            )}
+            <div className="flex flex-col gap-3">
+              {MEAL_CONFIG.map((mealConfig) => {
+                const log = dogLogsDay.find((l) => getLogMealKey(l) === mealConfig.key) ?? null
+                const displayStatus = getMealStatus(mealConfig.key, dogLogsDay, activeDate)
+
+                return (
+                  <MealCard
+                    key={mealConfig.key}
+                    mealConfig={mealConfig}
+                    log={log}
+                    displayStatus={displayStatus}
+                    dogId={dog.id}
+                  />
+                )
+              })}
+            </div>
           </section>
         )
       })}

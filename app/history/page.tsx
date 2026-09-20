@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatusChip } from "@/components/status-chip"
 import { DateFilter, type DateRangeOption } from "@/components/date-filter"
 import { useAppStore } from "@/lib/app-store"
+import { getMealConfig, getLogMealKey } from "@/lib/meal-utils"
 import type { MealLog, MealStatus } from "@/lib/types"
 
 function withinRange(iso: string, range: DateRangeOption) {
@@ -108,10 +109,10 @@ export default function HistoryPage() {
                     )}
                     <div className="flex flex-col gap-0.5">
                       <span className="text-sm font-medium text-foreground">
-                        {dog?.name} · {schedule?.label ?? "ไม่ระบุมื้อ"}
+                        {dog?.name} · {schedule?.label ?? `มื้อ${getMealConfig(getLogMealKey(log)).label}`}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {formatDateTime(log.at)} · {by?.name ?? "สมาชิก"}
+                        {log.recordedAt ? `เวลา ${log.recordedAt} น.` : formatDateTime(log.at)} · {by?.name ?? "สมาชิก"}
                       </span>
                     </div>
                   </div>

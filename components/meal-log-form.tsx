@@ -1,14 +1,20 @@
 "use client"
 
-import { useState } from "react"
-import { CheckCircle2, CircleDashed, Moon, Sun, Utensils, XCircle } from "lucide-react"
+import { useState, useEffect } from "react"
+import { CheckCircle2, CircleDashed, Clock, Sparkles, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { PhotoPicker } from "@/components/photo-picker"
 import { cn } from "@/lib/utils"
-import type { Dog, MealStatus, Schedule } from "@/lib/types"
+import {
+  getMealConfig,
+  resolveMealKeyForRecord,
+  formatRecordedTime,
+  type MealKey,
+} from "@/lib/meal-utils"
+import type { Dog, MealStatus } from "@/lib/types"
 
 const STATUS_OPTIONS: { status: MealStatus; label: string; icon: typeof CheckCircle2; color: string }[] = [
   { status: "finished", label: "กินหมด", icon: CheckCircle2, color: "text-emerald-500" },
@@ -21,68 +27,65 @@ const AMOUNT_PRESETS = ["50", "100", "150", "200"]
 
 export type MealLogFormValues = {
   dogId: string
-  scheduleId: string | null
   status: MealStatus
   amountG: string
   food: string
   note: string
   photoAfter: string | null
-  at: string
-}
-
-function toLocalInputValue(iso: string) {
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-function formatTime(timeStr: string) {
-  if (!timeStr) return ""
-  return timeStr.slice(0, 5) + " น."
+  mealType: MealKey
+  recordedAt: string
 }
 
 export function MealLogForm({
   dogs,
-  schedules,
   initialValues,
   submitLabel = "บันทึกมื้ออาหาร",
   onSubmit,
 }: {
   dogs: Dog[]
-  schedules: Schedule[]
   initialValues?: Partial<MealLogFormValues>
   submitLabel?: string
   onSubmit: (values: MealLogFormValues) => void
 }) {
   const [dogId, setDogId] = useState(initialValues?.dogId ?? dogs[0]?.id ?? "")
-  const [scheduleId, setScheduleId] = useState<string | null>(
-    initialValues?.scheduleId ?? schedules.find((s) => s.dog_id === (initialValues?.dogId ?? dogs[0]?.id))?.id ?? null
-  )
   const [status, setStatus] = useState<MealStatus>(initialValues?.status ?? "finished")
   const [amountG, setAmountG] = useState(initialValues?.amountG ?? "")
   const [food, setFood] = useState(initialValues?.food ?? "")
   const [note, setNote] = useState(initialValues?.note ?? "")
   const [photoAfter, setPhotoAfter] = useState<string | null>(initialValues?.photoAfter ?? null)
-  const [at, setAt] = useState(
-    initialValues?.at ? toLocalInputValue(initialValues.at) : toLocalInputValue(new Date().toISOString())
-  )
 
-  const dogSchedules = schedules.filter((s) => s.dog_id === dogId)
+  // Real-time system time calculation
+  const [now, setNow] = useState(() => new Date())
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date())
+    }, 10000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const currentMealKey = resolveMealKeyForRecord(now)
+  const currentMealConfig = getMealConfig(currentMealKey)
+  const currentFormattedTime = formatRecordedTime(now)
 
   return (
     <form
       className="flex flex-col gap-5"
       onSubmit={(e) => {
         e.preventDefault()
+        const submitNow = new Date()
+        const resolvedMealKey = resolveMealKeyForRecord(submitNow)
+        const resolvedTime = formatRecordedTime(submitNow)
+
         onSubmit({
           dogId,
-          scheduleId,
           status,
           amountG,
           food,
           note,
           photoAfter,
-          at: new Date(at).toISOString(),
+          mealType: resolvedMealKey,
+          recordedAt: resolvedTime,
         })
       }}
     >
@@ -95,11 +98,7 @@ export function MealLogForm({
               <button
                 key={dog.id}
                 type="button"
-                onClick={() => {
-                  setDogId(dog.id)
-                  const firstSchedule = schedules.find((s) => s.dog_id === dog.id)
-                  setScheduleId(firstSchedule?.id ?? null)
-                }}
+                onClick={() => setDogId(dog.id)}
                 className={cn(
                   "rounded-full px-4 py-2 text-sm font-medium transition-all",
                   dogId === dog.id
@@ -114,43 +113,25 @@ export function MealLogForm({
         </div>
       )}
 
-      {/* Meal Selection - Big easy cards */}
-      <div className="flex flex-col gap-2">
-        <Label>เลือกมื้ออาหาร</Label>
-        {dogSchedules.length === 0 ? (
-          <p className="text-xs text-muted-foreground">ยังไม่มีมื้ออาหารที่ตั้งไว้ (จะบันทึกแบบไม่ระบุมื้อ)</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {dogSchedules.map((s) => {
-              const isSelected = scheduleId === s.id
-              const isMorning = s.label.includes("เช้า")
-              const isEvening = s.label.includes("เย็น") || s.label.includes("ค่ำ")
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setScheduleId(s.id)}
-                  className={cn(
-                    "flex flex-col items-center justify-center gap-1 rounded-2xl border p-3 text-center transition-all",
-                    isSelected
-                      ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/20 shadow-sm"
-                      : "border-border bg-secondary/40 text-secondary-foreground hover:bg-secondary"
-                  )}
-                >
-                  {isMorning ? (
-                    <Sun className="size-5 text-amber-500" />
-                  ) : isEvening ? (
-                    <Moon className="size-5 text-indigo-400" />
-                  ) : (
-                    <Utensils className="size-5 text-primary" />
-                  )}
-                  <span className="font-semibold text-sm">{s.label}</span>
-                  <span className="text-xs text-muted-foreground">{formatTime(s.time)}</span>
-                </button>
-              )
-            })}
+      {/* Auto-detected Meal Banner */}
+      <div className="flex items-center justify-between rounded-2xl border border-primary/20 bg-primary/5 p-4 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Sparkles className="size-5" />
           </div>
-        )}
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-primary">คำนวณมื้ออาหารอัตโนมัติ</span>
+            </div>
+            <span className="text-base font-bold text-foreground">
+              มื้อ{currentMealConfig.label}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 rounded-full bg-background px-3 py-1 text-xs font-semibold text-foreground shadow-2xs border border-border">
+          <Clock className="size-3.5 text-muted-foreground" />
+          <span>{currentFormattedTime} น.</span>
+        </div>
       </div>
 
       {/* Status Selection */}
@@ -234,7 +215,7 @@ export function MealLogForm({
         </div>
       </div>
 
-      {/* Note & Time */}
+      {/* Note */}
       <div className="flex flex-col gap-2">
         <Label htmlFor="note-input">บันทึกเพิ่มเติม (ไม่บังคับ)</Label>
         <Textarea
@@ -243,20 +224,6 @@ export function MealLogForm({
           onChange={(e) => setNote(e.target.value)}
           placeholder="เช่น กินเกลี้ยง, ใส่ยาบำรุงด้วย"
           rows={2}
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="at-input" className="text-xs text-muted-foreground">
-          เวลาที่บันทึก
-        </Label>
-        <Input
-          id="at-input"
-          type="datetime-local"
-          value={at}
-          onChange={(e) => setAt(e.target.value)}
-          className="h-10 text-xs"
-          required
         />
       </div>
 

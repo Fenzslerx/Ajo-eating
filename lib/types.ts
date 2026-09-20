@@ -12,6 +12,8 @@ export type Schedule = {
   time: string
 }
 
+export type MealType = "morning" | "noon" | "evening"
+
 export type MealStatus = "finished" | "partial" | "none"
 export type LogStatus = MealStatus
 export const statusLabel: Record<MealStatus, string> = { finished: "กินหมด", partial: "กินบางส่วน", none: "ไม่กิน" }
@@ -28,6 +30,8 @@ export type MealLog = {
   photo_before: string | null
   photo_after: string | null
   by: string
+  mealType?: MealType
+  recordedAt?: string
 }
 
 export type MemberRole = "owner" | "member" | "editor" | "viewer"
