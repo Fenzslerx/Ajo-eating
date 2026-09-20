@@ -42,6 +42,26 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const isDryRun = process.argv.includes("--dry-run");
 const limitArg = process.argv.find((arg) => arg.startsWith("--limit="));
 const limit = limitArg ? parseInt(limitArg.split("=")[1], 10) : undefined;
+const emailArg = process.argv.find((arg) => arg.startsWith("--email="))?.split("=")[1];
+const passwordArg = process.argv.find((arg) => arg.startsWith("--password="))?.split("=")[1];
+
+async function authenticateIfRequired() {
+  if (emailArg && passwordArg) {
+    console.log(`Authenticating as ${emailArg}...`);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: emailArg,
+      password: passwordArg,
+    });
+    if (error) {
+      console.error("Auth error:", error.message);
+      process.exit(1);
+    }
+    console.log("Authenticated successfully.");
+  } else if (!process.env.SUPABASE_SERVICE_ROLE_KEY && !localEnv.SUPABASE_SERVICE_ROLE_KEY) {
+    console.log("Notice: Running with Publishable/Anon key without --email & --password.");
+    console.log("If your tables have RLS enabled, please pass --email=your@email.com --password=xxx or add SUPABASE_SERVICE_ROLE_KEY to .env.local to access owned rows.");
+  }
+}
 
 function parseBase64(base64String) {
   const matches = base64String.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
@@ -143,6 +163,8 @@ async function main() {
   console.log("=== Supabase Base64 to Storage Migration ===");
   if (isDryRun) console.log("Mode: DRY RUN (no files uploaded, no records updated)");
   if (limit) console.log(`Limit: ${limit} records per table`);
+
+  await authenticateIfRequired();
 
   await migrateDogs();
   await migrateLogs();
