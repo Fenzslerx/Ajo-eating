@@ -1,0 +1,25 @@
+"use client";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { flushQueuedLogs, queueLog } from "@/lib/offline-queue";
+import type { Dog, DogMember, MealLog, Profile, Schedule } from "./types";
+
+type Store = { currentUserId: string; profiles: Profile[]; dogs: Dog[]; schedules: Schedule[]; logs: MealLog[]; members: DogMember[]; pendingCount: number; isOnline: boolean; addLog:(x: Omit<MealLog,"id"|"by">)=>void; updateLog:(id:string,x:Partial<MealLog>)=>void; removeLog:(id:string)=>void; addDog:(name:string)=>void; removeDog:(id:string)=>void; addSchedule:(x:Omit<Schedule,"id">)=>void; removeSchedule:(id:string)=>void; addMember:(dogId:string,email:string)=>void; removeMember:(dogId:string,userId:string)=>void; profileFor:(id:string)=>Profile|undefined };
+const Context = createContext<Store | null>(null);
+const mapLog = (row: any): MealLog => ({ ...row, photo_before: row.photo ?? null, photo_after: null });
+export function AppStoreProvider({ children }: { children: ReactNode }) {
+  const [dogs,setDogs]=useState<Dog[]>([]); const [schedules,setSchedules]=useState<Schedule[]>([]); const [logs,setLogs]=useState<MealLog[]>([]); const [members,setMembers]=useState<DogMember[]>([]); const [profiles,setProfiles]=useState<Profile[]>([]); const [userId,setUserId]=useState(""); const [online,setOnline]=useState(true); const [pending,setPending]=useState(0);
+  const load=useCallback(async()=>{ const s=createClient(); const {data:{user}}=await s.auth.getUser(); if(!user){ location.replace("/login"); return; } setUserId(user.id); const [d,sc,l]=await Promise.all([s.from("dogs").select("id,name,photo,owner_id"),s.from("schedules").select("id,dog_id,label,time"),s.from("logs").select("*").order("at",{ascending:false})]); const dogRows=(d.data??[]) as Dog[]; setDogs(dogRows); setSchedules(sc.data??[]); setLogs((l.data??[]).map(mapLog)); const groups=await Promise.all(dogRows.map((dog)=>s.rpc("get_dog_members",{target_dog_id:dog.id}))); const all=groups.flatMap((result,index)=>(result.data??[]).map((member:any)=>({...member,dog_id:dogRows[index].id}))); setMembers(all); setProfiles(all.map((member:any)=>({id:member.user_id,name:member.email.split("@")[0],email:member.email}))); },[]);
+  useEffect(()=>{ void load(); setOnline(navigator.onLine); const up=()=>{setOnline(true);void flushQueuedLogs().then(load)}; const down=()=>setOnline(false); addEventListener("online",up);addEventListener("offline",down); const ch=createClient().channel("dogmeal-ui").on("postgres_changes",{event:"*",schema:"public",table:"logs"},load).subscribe(); return()=>{removeEventListener("online",up);removeEventListener("offline",down);createClient().removeChannel(ch)}},[load]);
+  const addLog=useCallback((x:Omit<MealLog,"id"|"by">)=>{ const payload:any={dog_id:x.dog_id,schedule_id:x.schedule_id,at:x.at,status:x.status,amount_g:x.amount_g,food:x.food,note:x.note}; if(!navigator.onLine){setPending(v=>v+1);void queueLog(payload);return;} void createClient().from("logs").insert(payload).then(load)},[load]);
+  const updateLog=useCallback((id:string,x:Partial<MealLog>)=>{void createClient().from("logs").update({dog_id:x.dog_id,schedule_id:x.schedule_id,at:x.at,status:x.status,amount_g:x.amount_g,food:x.food,note:x.note}).eq("id",id).then(load)},[load]);
+  const removeLog=useCallback((id:string)=>{void createClient().from("logs").delete().eq("id",id).then(load)},[load]);
+  const addDog=useCallback((name:string)=>{void createClient().auth.getUser().then(({data})=>data.user&&createClient().from("dogs").insert({name,owner_id:data.user.id}).then(load))},[load]);
+  const removeDog=useCallback((id:string)=>{void createClient().from("dogs").delete().eq("id",id).then(load)},[load]);
+  const addSchedule=useCallback((x:Omit<Schedule,"id">)=>{void createClient().from("schedules").insert(x).then(load)},[load]);
+  const removeSchedule=useCallback((id:string)=>{void createClient().from("schedules").delete().eq("id",id).then(load)},[load]);
+  const addMember=useCallback((dogId:string,email:string)=>{void createClient().rpc("invite_dog_member",{target_dog_id:dogId,member_email:email}).then(load)},[load]);
+  const removeMember=useCallback((dogId:string,userId:string)=>{void createClient().from("dog_members").delete().eq("dog_id",dogId).eq("user_id",userId).then(load)},[load]);
+  const value=useMemo<Store>(()=>({currentUserId:userId,profiles,dogs,schedules,logs,members,pendingCount:pending,isOnline:online,addLog,updateLog,removeLog,addDog,removeDog,addSchedule,removeSchedule,addMember,removeMember,profileFor:(id)=>profiles.find(p=>p.id===id)}),[userId,profiles,dogs,schedules,logs,members,pending,online,addLog,updateLog,removeLog,addDog,removeDog,addSchedule,removeSchedule,addMember,removeMember]); return <Context.Provider value={value}>{children}</Context.Provider>;
+}
+export function useAppStore(){const value=useContext(Context);if(!value)throw new Error("AppStoreProvider missing");return value;}

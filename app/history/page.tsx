@@ -1,41 +1,183 @@
-"use client";
+"use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { Dog, LogStatus, MealLog, Schedule, statusLabel } from "@/lib/types";
-import { Navigation } from "@/components/navigation";
+import { useMemo, useState } from "react"
+import { Search } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { StatusChip } from "@/components/status-chip"
+import { DateFilter, type DateRangeOption } from "@/components/date-filter"
+import { useAppStore } from "@/lib/app-store"
+import type { MealLog, MealStatus } from "@/lib/types"
 
-type Range = "today" | "7d" | "30d";
+function withinRange(iso: string, range: DateRangeOption) {
+  const days = range === "today" ? 0 : range === "7d" ? 7 : 30
+  const target = new Date(iso)
+  const now = new Date()
+  const cutoff = new Date(now)
+  cutoff.setDate(cutoff.getDate() - days)
+  cutoff.setHours(0, 0, 0, 0)
+  return target >= cutoff
+}
 
-const startFor = (range: Range) => {
-  const date = new Date(); date.setHours(0, 0, 0, 0);
-  if (range === "7d") date.setDate(date.getDate() - 6);
-  if (range === "30d") date.setDate(date.getDate() - 29);
-  return date.toISOString();
-};
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString("th-TH", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
 
 export default function HistoryPage() {
-  const [range, setRange] = useState<Range>("7d");
-  const [dogId, setDogId] = useState("all");
-  const [status, setStatus] = useState<LogStatus | "all">("all");
-  const [dogs, setDogs] = useState<Dog[]>([]); const [schedules, setSchedules] = useState<Schedule[]>([]); const [logs, setLogs] = useState<MealLog[]>([]);
+  const { dogs, schedules, logs, profileFor } = useAppStore()
+  const [range, setRange] = useState<DateRangeOption>("7d")
+  const [dogFilter, setDogFilter] = useState<string>("all")
+  const [statusFilter, setStatusFilter] = useState<MealStatus | "all">("all")
+  const [selected, setSelected] = useState<MealLog | null>(null)
 
-  const load = useCallback(async () => {
-    const supabase = createClient();
-    const [dogResult, scheduleResult, logResult] = await Promise.all([
-      supabase.from("dogs").select("id,name,photo").order("created_at"),
-      supabase.from("schedules").select("id,dog_id,label,time"),
-      supabase.from("logs").select("id,dog_id,schedule_id,at,status,amount_g,food,note,photo").gte("at", startFor(range)).order("at", { ascending: false })
-    ]);
-    setDogs((dogResult.data ?? []) as Dog[]); setSchedules((scheduleResult.data ?? []) as Schedule[]); setLogs((logResult.data ?? []) as MealLog[]);
-  }, [range]);
-  useEffect(() => { load(); }, [load]);
-  const filtered = useMemo(() => logs.filter((log) => (dogId === "all" || log.dog_id === dogId) && (status === "all" || log.status === status)), [logs, dogId, status]);
+  const filtered = useMemo(() => {
+    return logs
+      .filter((l) => withinRange(l.at, range))
+      .filter((l) => dogFilter === "all" || l.dog_id === dogFilter)
+      .filter((l) => statusFilter === "all" || l.status === statusFilter)
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+  }, [logs, range, dogFilter, statusFilter])
 
-  return <main className="mx-auto min-h-screen max-w-md px-4 pt-6 pb-24"><header><p className="text-xs font-bold tracking-[.2em] text-orange-500">DOGMEAL</p><h1 className="mt-1 text-2xl font-bold">ประวัติ</h1></header>
-    <div className="mt-5 flex gap-2 rounded-2xl bg-orange-100/70 p-1">{(["today", "7d", "30d"] as Range[]).map((item) => <button key={item} onClick={() => setRange(item)} className={`flex-1 rounded-xl py-2 text-sm font-bold ${range === item ? "bg-white text-orange-600 shadow-sm" : "text-stone-500"}`}>{item === "today" ? "วันนี้" : item === "7d" ? "7 วัน" : "30 วัน"}</button>)}</div>
-    <div className="mt-3 grid grid-cols-2 gap-2"><select value={dogId} onChange={(e) => setDogId(e.target.value)} className="rounded-xl border border-orange-100 bg-white px-3 py-3 text-sm"><option value="all">น้องหมาทุกตัว</option>{dogs.map((dog) => <option key={dog.id} value={dog.id}>{dog.name}</option>)}</select><select value={status} onChange={(e) => setStatus(e.target.value as LogStatus | "all")} className="rounded-xl border border-orange-100 bg-white px-3 py-3 text-sm"><option value="all">ทุกสถานะ</option>{(Object.keys(statusLabel) as LogStatus[]).map((item) => <option key={item} value={item}>{statusLabel[item]}</option>)}</select></div>
-    <div className="mt-5 space-y-2">{filtered.map((log) => <article key={log.id} className="flex items-center justify-between rounded-2xl border border-orange-100 bg-white p-4 shadow-sm"><div><p className="font-bold">{dogs.find((dog) => dog.id === log.dog_id)?.name ?? "น้องหมา"} · {schedules.find((schedule) => schedule.id === log.schedule_id)?.label ?? "มื้อเพิ่มเติม"}</p><p className="mt-1 text-xs text-stone-500">{new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(log.at))}{log.amount_g ? ` · ${log.amount_g} กรัม` : ""}</p>{log.note && <p className="mt-2 text-sm text-stone-600">{log.note}</p>}</div><span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${log.status === "finished" ? "bg-emerald-100 text-emerald-700" : log.status === "partial" ? "bg-orange-100 text-orange-700" : "bg-red-100 text-red-700"}`}>{statusLabel[log.status]}</span></article>)}{!filtered.length && <p className="py-16 text-center text-sm text-stone-500">ไม่พบบันทึกที่ตรงกับตัวกรอง</p>}</div>
-    <Navigation active="history" />
-  </main>;
+  return (
+    <div className="flex flex-col gap-5 px-4 pt-4">
+      <header className="flex flex-col gap-3 pt-2">
+        <h1 className="text-xl font-bold text-foreground">ประวัติ</h1>
+        <DateFilter value={range} onChange={setRange} />
+        <div className="flex gap-2">
+          <Select value={dogFilter} onValueChange={(value) => value && setDogFilter(value)}>
+            <SelectTrigger className="flex-1" aria-label="กรองตามน้องหมา">
+              <SelectValue placeholder="ทุกตัว" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">ทุกตัว</SelectItem>
+              {dogs.map((dog) => (
+                <SelectItem key={dog.id} value={dog.id}>
+                  {dog.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as MealStatus | "all")}>
+            <SelectTrigger className="flex-1" aria-label="กรองตามสถานะ">
+              <SelectValue placeholder="ทุกสถานะ" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">ทุกสถานะ</SelectItem>
+              <SelectItem value="finished">กินหมด</SelectItem>
+              <SelectItem value="partial">กินบางส่วน</SelectItem>
+              <SelectItem value="none">ไม่กิน</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </header>
+
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 py-16 text-center">
+          <Search className="size-8 text-muted-foreground" aria-hidden="true" />
+          <p className="text-sm text-muted-foreground">ไม่พบบันทึกที่ตรงกับตัวกรอง</p>
+        </div>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {filtered.map((log) => {
+            const dog = dogs.find((d) => d.id === log.dog_id)
+            const schedule = schedules.find((s) => s.id === log.schedule_id)
+            const by = profileFor(log.by)
+            return (
+              <li key={log.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelected(log)}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-secondary/40"
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium text-foreground">
+                      {dog?.name} · {schedule?.label ?? "ไม่ระบุมื้อ"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDateTime(log.at)} · บันทึกโดย {by?.name ?? "ไม่ทราบ"}
+                    </span>
+                  </div>
+                  <StatusChip status={log.status} />
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
+        <DialogContent>
+          {selected && (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {dogs.find((d) => d.id === selected.dog_id)?.name} ·{" "}
+                  {schedules.find((s) => s.id === selected.schedule_id)?.label ?? "ไม่ระบุมื้อ"}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="flex flex-col gap-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">สถานะ</span>
+                  <StatusChip status={selected.status} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">เวลา</span>
+                  <span>{formatDateTime(selected.at)}</span>
+                </div>
+                {selected.amount_g != null && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">ปริมาณ</span>
+                    <span>{selected.amount_g} กรัม</span>
+                  </div>
+                )}
+                {selected.food && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">อาหาร</span>
+                    <span>{selected.food}</span>
+                  </div>
+                )}
+                {selected.note && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-muted-foreground">บันทึกเพิ่มเติม</span>
+                    <p>{selected.note}</p>
+                  </div>
+                )}
+                {(selected.photo_before || selected.photo_after) && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {selected.photo_before && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs text-muted-foreground">ก่อนกิน</span>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={selected.photo_before || "/placeholder.svg"}
+                          alt="รูปมื้ออาหารก่อนกิน"
+                          className="w-full rounded-xl border border-border object-cover"
+                        />
+                      </div>
+                    )}
+                    {selected.photo_after && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs text-muted-foreground">หลังกิน</span>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={selected.photo_after || "/placeholder.svg"}
+                          alt="รูปมื้ออาหารหลังกิน"
+                          className="w-full rounded-xl border border-border object-cover"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
 }
