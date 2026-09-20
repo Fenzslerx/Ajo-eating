@@ -9,24 +9,25 @@
   <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #fbf7f4;
+      --bg: #f8fafc;
       --surface: #ffffff;
-      --surface-subtle: #f7ede5;
-      --text-main: #2d2420;
-      --text-muted: #7d6b63;
+      --surface-subtle: #f1f5f9;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
       --primary: #f97316;
       --primary-hover: #ea580c;
       --primary-light: #ffedd5;
-      --border: #f0dfd5;
+      --border: #e2e8f0;
       --radius-lg: 20px;
       --radius-md: 14px;
       --radius-sm: 8px;
-      --shadow-sm: 0 2px 8px rgba(45, 36, 32, 0.04);
-      --shadow-md: 0 8px 24px rgba(45, 36, 32, 0.08);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
+      --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.04);
       --status-finished-bg: #dcfce7;
       --status-finished-text: #15803d;
-      --status-partial-bg: #ffedd5;
-      --status-partial-text: #c2410c;
+      --status-partial-bg: #fef3c7;
+      --status-partial-text: #b45309;
       --status-none-bg: #fee2e2;
       --status-none-text: #b91c1c;
       --transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -46,28 +47,34 @@
       min-height: 100vh;
       display: flex;
       justify-content: center;
-      padding-bottom: 60px;
+      padding-bottom: 70px;
     }
 
-    .app-container {
+    .app-viewport {
       width: 100%;
       max-width: 480px;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      padding: 20px 16px 40px;
+      position: relative;
     }
 
-    /* Header */
-    header {
-      margin-bottom: 20px;
+    /* Top Bar */
+    .top-bar {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 20px;
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
 
-    .brand-title {
-      font-size: 24px;
+    .app-title {
+      font-size: 20px;
       font-weight: 700;
       color: var(--text-main);
       display: flex;
@@ -75,7 +82,7 @@
       gap: 8px;
     }
 
-    .brand-badge {
+    .app-badge {
       font-size: 11px;
       font-weight: 600;
       background: var(--primary-light);
@@ -84,115 +91,364 @@
       border-radius: 999px;
     }
 
-    /* Navigation Tabs */
-    .tab-nav {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      background: var(--surface-subtle);
-      padding: 4px;
-      border-radius: var(--radius-md);
-      margin-bottom: 20px;
-      gap: 4px;
+    .clock-display {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
     }
 
-    .tab-btn {
+    /* Page Views (Screens) */
+    .view-page {
+      display: none;
+      padding: 20px 16px;
+      flex-direction: column;
+      gap: 20px;
+      animation: fadeIn 0.25s ease-out;
+    }
+
+    .view-page.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Bottom Navigation Bar */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 480px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      padding: 6px 12px;
+      z-index: 50;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 0;
       border: none;
       background: transparent;
       color: var(--text-muted);
-      font-weight: 500;
-      font-size: 15px;
-      padding: 10px 0;
-      border-radius: var(--radius-sm);
       cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: var(--radius-sm);
       transition: var(--transition);
+      gap: 4px;
+    }
+
+    .nav-item svg {
+      width: 22px;
+      height: 22px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: var(--transition);
+    }
+
+    .nav-item.active {
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .nav-item.active svg {
+      transform: scale(1.08);
+      stroke: var(--primary);
+    }
+
+    /* Section Headings */
+    .section-header {
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
       gap: 6px;
     }
 
-    .tab-btn.active {
-      background: var(--surface);
-      color: var(--primary);
-      font-weight: 600;
-      box-shadow: var(--shadow-sm);
+    .section-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 400;
     }
 
-    /* Card Panels */
-    .panel {
-      display: none;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .panel.active {
-      display: flex;
-    }
-
+    /* Card Containers */
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
-      padding: 20px;
+      padding: 18px;
       box-shadow: var(--shadow-sm);
     }
 
-    .card-header {
-      display: flex;
+    /* Status Badges */
+    .badge {
+      display: inline-flex;
       align-items: center;
-      justify-content: space-between;
-      margin-bottom: 16px;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      width: fit-content;
     }
 
-    .card-title {
+    .badge.finished {
+      background: var(--status-finished-bg);
+      color: var(--status-finished-text);
+    }
+
+    .badge.partial {
+      background: var(--status-partial-bg);
+      color: var(--status-partial-text);
+    }
+
+    .badge.none {
+      background: var(--status-none-bg);
+      color: var(--status-none-text);
+    }
+
+    /* ================================================= */
+    /* SCREEN 1: HOME (DISPLAY ONLY)                     */
+    /* ================================================= */
+    .today-summary-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .today-photo-banner {
+      width: 100%;
+      height: 220px;
+      object-fit: cover;
+      background: var(--surface-subtle);
+      display: block;
+    }
+
+    .today-photo-empty {
+      width: 100%;
+      height: 140px;
+      background: var(--surface-subtle);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      gap: 6px;
+    }
+
+    .today-content {
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .today-date-text {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .today-notes-box {
+      font-size: 14px;
+      color: var(--text-main);
+      background: var(--surface-subtle);
+      padding: 12px 14px;
+      border-radius: var(--radius-md);
+      line-height: 1.5;
+    }
+
+    .not-recorded-card {
+      background: var(--surface);
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-lg);
+      padding: 32px 20px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .not-recorded-icon {
+      font-size: 42px;
+    }
+
+    .not-recorded-title {
       font-size: 16px;
       font-weight: 600;
       color: var(--text-main);
     }
 
-    .date-tag {
+    .not-recorded-desc {
       font-size: 13px;
       color: var(--text-muted);
-      font-weight: 400;
+      max-width: 260px;
+      line-height: 1.4;
     }
 
-    /* Forms */
+    .btn-link-record {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--primary);
+      color: white;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      box-shadow: 0 4px 10px rgba(249, 115, 22, 0.25);
+      border: none;
+      cursor: pointer;
+      transition: var(--transition);
+      margin-top: 4px;
+    }
+
+    .btn-link-record:hover {
+      background: var(--primary-hover);
+    }
+
+    /* History List (Screen 1) */
+    .history-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .history-card-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .history-card-item:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .history-card-thumb {
+      width: 54px;
+      height: 54px;
+      border-radius: var(--radius-sm);
+      object-fit: cover;
+      background: var(--surface-subtle);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      color: var(--text-muted);
+    }
+
+    .history-card-details {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .history-card-date {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .history-card-snippet {
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ================================================= */
+    /* SCREEN 2: RECORD FORM (WRITE ONLY FOR TODAY)      */
+    /* ================================================= */
+    .record-form-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .today-lock-notice {
+      background: var(--primary-light);
+      border-left: 4px solid var(--primary);
+      padding: 10px 14px;
+      border-radius: 4px var(--radius-sm) var(--radius-sm) 4px;
+      font-size: 12px;
+      color: #9a3412;
+      line-height: 1.4;
+      font-weight: 500;
+    }
+
     .form-group {
       display: flex;
       flex-direction: column;
       gap: 8px;
-      margin-bottom: 16px;
     }
 
     .form-label {
       font-size: 14px;
-      font-weight: 500;
+      font-weight: 600;
       color: var(--text-main);
     }
 
-    .status-group {
+    /* Status Radio Group */
+    .status-selection-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: repeat(3, 1fr);
       gap: 8px;
     }
 
-    .status-opt {
-      position: relative;
+    .status-selection-grid input[type="radio"] {
+      display: none;
     }
 
-    .status-opt input {
-      position: absolute;
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .status-chip {
+    .status-select-btn {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 10px 4px;
+      padding: 12px 6px;
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
       background: var(--surface-subtle);
@@ -201,20 +457,20 @@
       font-weight: 500;
       cursor: pointer;
       transition: var(--transition);
+      gap: 5px;
       text-align: center;
-      gap: 4px;
     }
 
-    .status-opt input:checked + .status-chip {
+    .status-selection-grid input[type="radio"]:checked + .status-select-btn {
       border-color: var(--primary);
-      background: var(--primary-light);
+      background: #fff;
       color: var(--primary);
       font-weight: 600;
       box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2);
     }
 
     /* Photo Picker */
-    .photo-preview-box {
+    .photo-upload-zone {
       width: 100%;
       height: 220px;
       border: 2px dashed var(--border);
@@ -230,44 +486,45 @@
       transition: var(--transition);
     }
 
-    .photo-preview-box:hover {
+    .photo-upload-zone:hover {
       border-color: var(--primary);
     }
 
-    .photo-preview-box img {
+    .photo-upload-zone img {
       width: 100%;
       height: 100%;
       object-fit: cover;
       display: none;
     }
 
-    .photo-placeholder {
+    .photo-upload-placeholder {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       color: var(--text-muted);
       font-size: 13px;
+      text-align: center;
     }
 
-    .photo-placeholder svg {
-      width: 32px;
-      height: 32px;
-      fill: none;
+    .photo-upload-placeholder svg {
+      width: 36px;
+      height: 36px;
       stroke: currentColor;
+      fill: none;
       stroke-width: 2;
     }
 
-    .photo-remove-btn {
+    .photo-clear-btn {
       position: absolute;
       top: 10px;
       right: 10px;
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(15, 23, 42, 0.75);
       color: #fff;
       border: none;
       border-radius: 50%;
-      width: 28px;
-      height: 28px;
+      width: 30px;
+      height: 30px;
       font-size: 14px;
       cursor: pointer;
       display: none;
@@ -275,151 +532,56 @@
       justify-content: center;
     }
 
-    textarea, input[type="text"] {
+    textarea {
       width: 100%;
+      min-height: 90px;
       padding: 12px;
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
-      background: #fff;
       font-size: 14px;
       color: var(--text-main);
       outline: none;
+      resize: vertical;
       transition: var(--transition);
     }
 
-    textarea:focus, input[type="text"]:focus {
+    textarea:focus {
       border-color: var(--primary);
       box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
     }
 
-    textarea {
-      resize: vertical;
-      min-height: 80px;
-    }
-
-    .btn-submit {
+    .btn-save-record {
       width: 100%;
       padding: 14px;
       background: var(--primary);
-      color: white;
+      color: #fff;
       border: none;
       border-radius: var(--radius-md);
       font-size: 15px;
       font-weight: 600;
       cursor: pointer;
-      transition: var(--transition);
       box-shadow: 0 4px 12px rgba(249, 115, 22, 0.25);
+      transition: var(--transition);
     }
 
-    .btn-submit:hover {
+    .btn-save-record:hover {
       background: var(--primary-hover);
     }
 
-    .btn-submit:active {
+    .btn-save-record:active {
       transform: scale(0.98);
     }
 
-    /* History List */
-    .history-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .history-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      padding: 14px;
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      cursor: pointer;
-      transition: var(--transition);
-    }
-
-    .history-card:hover {
-      border-color: var(--primary);
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .history-thumb {
-      width: 60px;
-      height: 60px;
-      border-radius: var(--radius-sm);
-      object-fit: cover;
-      background: var(--surface-subtle);
-      flex-shrink: 0;
-    }
-
-    .history-info {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .history-date {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-main);
-    }
-
-    .history-preview {
-      font-size: 12px;
-      color: var(--text-muted);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      font-size: 12px;
-      font-weight: 600;
-      padding: 4px 8px;
-      border-radius: 999px;
-      width: fit-content;
-    }
-
-    .status-badge.finished {
-      background: var(--status-finished-bg);
-      color: var(--status-finished-text);
-    }
-
-    .status-badge.partial {
-      background: var(--status-partial-bg);
-      color: var(--status-partial-text);
-    }
-
-    .status-badge.none {
-      background: var(--status-none-bg);
-      color: var(--status-none-text);
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 40px 20px;
-      color: var(--text-muted);
-      font-size: 14px;
-    }
-
-    /* Modal / Readonly View */
+    /* Modal (Read-Only) */
     .modal-backdrop {
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0, 0, 0, 0.45);
+      inset: 0;
+      background: rgba(15, 23, 42, 0.5);
       backdrop-filter: blur(4px);
+      z-index: 100;
       display: none;
       align-items: center;
       justify-content: center;
-      z-index: 999;
       padding: 16px;
     }
 
@@ -427,7 +589,7 @@
       display: flex;
     }
 
-    .modal-content {
+    .modal-dialog {
       background: var(--surface);
       border-radius: var(--radius-lg);
       width: 100%;
@@ -435,87 +597,95 @@
       max-height: 90vh;
       overflow-y: auto;
       padding: 20px;
-      box-shadow: var(--shadow-md);
+      box-shadow: var(--shadow-lg);
       position: relative;
     }
 
     .modal-header {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-bottom: 14px;
+      justify-content: space-between;
+      margin-bottom: 12px;
     }
 
     .modal-title {
       font-size: 17px;
       font-weight: 700;
+      color: var(--text-main);
     }
 
-    .modal-close {
+    .modal-close-btn {
       background: var(--surface-subtle);
       border: none;
       width: 32px;
       height: 32px;
       border-radius: 50%;
+      cursor: pointer;
+      font-size: 16px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 16px;
-      cursor: pointer;
+      color: var(--text-muted);
     }
 
     .readonly-banner {
-      background: #f1f5f9;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
       color: #475569;
       font-size: 12px;
-      padding: 6px 10px;
-      border-radius: 6px;
-      display: inline-flex;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      display: flex;
       align-items: center;
+      gap: 6px;
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+
+    .readonly-image {
+      width: 100%;
+      max-height: 250px;
+      object-fit: cover;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      margin-bottom: 14px;
+      display: block;
+    }
+
+    .readonly-section {
+      display: flex;
+      flex-direction: column;
       gap: 4px;
       margin-bottom: 12px;
     }
 
-    .readonly-field {
-      margin-bottom: 12px;
-    }
-
-    .readonly-field label {
+    .readonly-label {
       font-size: 12px;
+      font-weight: 600;
       color: var(--text-muted);
-      display: block;
-      margin-bottom: 4px;
     }
 
-    .readonly-field p {
+    .readonly-text {
       font-size: 14px;
       color: var(--text-main);
       background: var(--surface-subtle);
-      padding: 10px;
+      padding: 10px 12px;
       border-radius: var(--radius-sm);
+      line-height: 1.5;
     }
 
-    .readonly-img {
-      width: 100%;
-      max-height: 240px;
-      object-fit: cover;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--border);
-    }
-
-    /* Toast */
     .toast {
       position: fixed;
-      bottom: 24px;
+      bottom: 80px;
       left: 50%;
       transform: translateX(-50%) translateY(100px);
-      background: rgba(45, 36, 32, 0.95);
+      background: #0f172a;
       color: #fff;
       padding: 10px 18px;
       border-radius: 999px;
       font-size: 13px;
       font-weight: 500;
-      box-shadow: var(--shadow-md);
+      box-shadow: var(--shadow-lg);
       transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
       z-index: 1000;
       pointer-events: none;
@@ -528,298 +698,500 @@
 </head>
 <body>
 
-  <div class="app-container">
-    <header>
-      <div class="brand-title">
+  <div class="app-viewport">
+    <!-- Top Header -->
+    <header class="top-bar">
+      <div class="app-title">
         <span>🐾 DailyMeal</span>
-        <span class="brand-badge">Tracker</span>
+        <span class="app-badge">Tracker</span>
       </div>
-      <div id="clockDisplay" style="font-size: 12px; color: var(--text-muted); font-weight: 500;"></div>
+      <div class="clock-display" id="realtimeClock">00:00</div>
     </header>
 
-    <!-- Navigation Tabs -->
-    <nav class="tab-nav">
-      <button class="tab-btn active" id="tabToday" onclick="AppUI.switchTab('today')">
-        📅 วันนี้
-      </button>
-      <button class="tab-btn" id="tabHistory" onclick="AppUI.switchTab('history')">
-        📜 ข้อมูลย้อนหลัง
-      </button>
-    </nav>
-
-    <!-- Panel 1: Today (Editable) -->
-    <section class="panel active" id="panelToday">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">บันทึกของวันนี้</div>
-          <div class="date-tag" id="todayDateLabel">กำลังโหลด...</div>
+    <!-- ================================================= -->
+    <!-- VIEW 1: หน้าหลัก (Home) — แสดงผลอย่างเดียว          -->
+    <!-- ================================================= -->
+    <main class="view-page active" id="viewHome">
+      
+      <!-- ส่วนที่ 1.1: ส่วน "วันนี้" (ดึงมาจาก Record เท่านั้น) -->
+      <section>
+        <div class="section-header">
+          <div class="section-title">
+            <span>📅</span>
+            <span>บันทึกของวันนี้</span>
+          </div>
+          <div class="section-subtitle" id="homeTodayDateLabel">กำลังโหลด...</div>
         </div>
 
-        <form id="todayForm" onsubmit="AppUI.saveToday(event)">
-          <!-- Status -->
+        <!-- ถ้าวันนี้มีข้อมูลจะแสดงการ์ดนี้ -->
+        <div class="today-summary-card" id="todaySummaryCard" style="display: none;">
+          <img id="todaySummaryImg" class="today-photo-banner" alt="รูปบันทึกวันนี้" style="display: none;">
+          <div class="today-photo-empty" id="todaySummaryImgEmpty" style="display: none;">
+            <span>📷</span>
+            <span>ไม่มีรูปภาพประกอบสำหรับวันนี้</span>
+          </div>
+
+          <div class="today-content">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span class="today-date-text" id="todaySummaryTimestamp">บันทึกเมื่อ --:--</span>
+              <span id="todaySummaryStatusBadge"></span>
+            </div>
+
+            <div class="today-notes-box" id="todaySummaryNotes">
+              <!-- ข้อความบันทึก -->
+            </div>
+
+            <div style="margin-top: 4px; display: flex; justify-content: flex-end;">
+              <button type="button" onclick="AppRouter.navigate('record')" style="background:none;border:none;color:var(--primary);font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+                ✏️ แก้ไขข้อมูลวันนี้
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ถ้าวันนี้ยังไม่มีข้อมูลจะแสดงกล่องนี้ -->
+        <div class="not-recorded-card" id="todayEmptyCard">
+          <div class="not-recorded-icon">🥣</div>
+          <div class="not-recorded-title">ยังไม่ได้บันทึกข้อมูลวันนี้</div>
+          <div class="not-recorded-desc">ยังไม่มีการบันทึกอาหารหรือกิจกรรมของวันปัจจุบัน กดปุ่มด้านล่างเพื่อเริ่มกรอกข้อมูล</div>
+          <button class="btn-link-record" onclick="AppRouter.navigate('record')">
+            <span>✍️</span>
+            <span>ไปที่หน้าบันทึก</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ส่วนที่ 1.2: ส่วน "ข้อมูลย้อนหลัง" (ดูได้อย่างเดียว ห้ามมีปุ่มแก้ไข/ลบ) -->
+      <section style="margin-top: 10px;">
+        <div class="section-header">
+          <div class="section-title">
+            <span>📜</span>
+            <span>ประวัติย้อนหลัง</span>
+          </div>
+          <div class="section-subtitle">ดูได้อย่างเดียว</div>
+        </div>
+
+        <div class="history-container" id="homeHistoryList">
+          <!-- Dynamic Items -->
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ================================================= -->
+    <!-- VIEW 2: หน้า "บันทึก" (Record) — หน้ากรอกข้อมูลโดยเฉพาะ -->
+    <!-- ================================================= -->
+    <main class="view-page" id="viewRecord">
+      
+      <div class="section-header">
+        <div class="section-title">
+          <span>✍️</span>
+          <span>บันทึกข้อมูลวันนี้</span>
+        </div>
+        <div class="section-subtitle" id="recordDateLabel">--/--/----</div>
+      </div>
+
+      <div class="record-form-card">
+        <div class="today-lock-notice">
+          🔒 หน้านี้ผูกกับ <b>"วันปัจจุบัน"</b> เสมอ เมื่อวันเวลาข้ามเที่ยงคืน ข้อมูลวันนี้จะถูกบันทึกลงประวัติย้อนหลังและล็อกอัตโนมัติ
+        </div>
+
+        <form id="recordForm" onsubmit="RecordController.handleSubmit(event)">
+          <!-- เลือกสถานะ -->
           <div class="form-group">
-            <label class="form-label">สถานะการกิน / กิจกรรม</label>
-            <div class="status-group">
-              <label class="status-opt">
-                <input type="radio" name="status" value="finished" checked>
-                <div class="status-chip">
-                  <span>🍽️</span>
+            <label class="form-label">สถานะการกิน</label>
+            <div class="status-selection-grid">
+              <label>
+                <input type="radio" name="recordStatus" value="finished" checked>
+                <div class="status-select-btn">
+                  <span style="font-size: 18px;">🍽️</span>
                   <span>กินหมด</span>
                 </div>
               </label>
-              <label class="status-opt">
-                <input type="radio" name="status" value="partial">
-                <div class="status-chip">
-                  <span>🥣</span>
+              <label>
+                <input type="radio" name="recordStatus" value="partial">
+                <div class="status-select-btn">
+                  <span style="font-size: 18px;">🥣</span>
                   <span>กินบางส่วน</span>
                 </div>
               </label>
-              <label class="status-opt">
-                <input type="radio" name="status" value="none">
-                <div class="status-chip">
-                  <span>❌</span>
+              <label>
+                <input type="radio" name="recordStatus" value="none">
+                <div class="status-select-btn">
+                  <span style="font-size: 18px;">❌</span>
                   <span>ไม่กิน</span>
                 </div>
               </label>
             </div>
           </div>
 
-          <!-- Photo Upload -->
-          <div class="form-group">
-            <label class="form-label">รูปภาพประกอบ</label>
-            <div class="photo-preview-box" id="photoBox" onclick="document.getElementById('photoInput').click()">
-              <div class="photo-placeholder" id="photoPlaceholder">
+          <!-- อัปโหลดรูปภาพ -->
+          <div class="form-group" style="margin-top: 14px;">
+            <label class="form-label">อัปโหลดรูปภาพ</label>
+            <div class="photo-upload-zone" id="photoUploadZone" onclick="document.getElementById('hiddenPhotoInput').click()">
+              <div class="photo-upload-placeholder" id="photoPlaceholderContent">
                 <svg viewBox="0 0 24 24">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
                   <circle cx="12" cy="13" r="4"></circle>
                 </svg>
-                <span>แตะเพื่อถ่ายรูป / เลือกรูป</span>
+                <span>แตะที่นี่เพื่อถ่ายรูปหรือเลือกไฟล์</span>
               </div>
-              <img id="todayImgPreview" alt="Preview">
-              <button type="button" class="photo-remove-btn" id="photoRemoveBtn" onclick="AppUI.removePhoto(event)">✕</button>
+              <img id="formImgPreview" alt="Preview">
+              <button type="button" class="photo-clear-btn" id="photoClearBtn" onclick="RecordController.clearPhoto(event)">✕</button>
             </div>
-            <input type="file" id="photoInput" accept="image/*" style="display: none;" onchange="AppUI.handlePhotoSelect(event)">
+            <input type="file" id="hiddenPhotoInput" accept="image/*" style="display: none;" onchange="RecordController.onFilePicked(event)">
           </div>
 
-          <!-- Notes -->
-          <div class="form-group">
-            <label class="form-label" for="notesInput">หมายเหตุ / ข้อมูลเพิ่มเติม</label>
-            <textarea id="notesInput" placeholder="เช่น อาหารเม็ด 80g + อกไก่ฉีก ร่าเริงดี..."></textarea>
+          <!-- หมายเหตุ -->
+          <div class="form-group" style="margin-top: 14px;">
+            <label class="form-label" for="recordNotes">หมายเหตุ / ปริมาณอาหาร</label>
+            <textarea id="recordNotes" placeholder="ระบุข้อมูล เช่น กินหมดเกลี้ยง 100g, ดื่มน้ำตามปกติ..."></textarea>
           </div>
 
-          <button type="submit" class="btn-submit">💾 บันทึกข้อมูลวันนี้</button>
+          <button type="submit" class="btn-save-record" style="margin-top: 18px;">
+            💾 บันทึกข้อมูลวันนี้
+          </button>
         </form>
       </div>
-    </section>
 
-    <!-- Panel 2: History (Read-only) -->
-    <section class="panel" id="panelHistory">
-      <div class="history-list" id="historyContainer">
-        <!-- Dynamic History Items Loaded Here -->
-      </div>
-    </section>
+    </main>
+
+    <!-- Bottom App Navigation Bar -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" id="navBtnHome" onclick="AppRouter.navigate('home')">
+        <svg viewBox="0 0 24 24">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+        <span>หน้าหลัก</span>
+      </button>
+      <button class="nav-item" id="navBtnRecord" onclick="AppRouter.navigate('record')">
+        <svg viewBox="0 0 24 24">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>
+        <span>บันทึก</span>
+      </button>
+    </nav>
   </div>
 
-  <!-- Read-Only Modal -->
-  <div class="modal-backdrop" id="readonlyModal" onclick="AppUI.closeModal(event)">
-    <div class="modal-content" onclick="event.stopPropagation()">
+  <!-- Modal สำหรับดูข้อมูลย้อนหลัง (READ-ONLY 100% — ห้ามมีปุ่มแก้ไขหรือลบ) -->
+  <div class="modal-backdrop" id="readonlyModal" onclick="HistoryModal.close(event)">
+    <div class="modal-dialog" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <div class="modal-title" id="modalDateTitle">รายละเอียด</div>
-        <button class="modal-close" onclick="AppUI.closeModal()">✕</button>
+        <div class="modal-title" id="modalDateTitle">รายละเอียดวันย้อนหลัง</div>
+        <button class="modal-close-btn" onclick="HistoryModal.close()">✕</button>
       </div>
+
       <div class="readonly-banner">
-        🔒 บันทึกย้อนหลัง (ดูได้อย่างเดียว - ไม่สามารถแก้ไขได้)
+        🔒 บันทึกย้อนหลัง (ดูได้อย่างเดียว — ไม่สามารถแก้ไขหรือลบได้)
       </div>
-      <div id="modalBody"></div>
+
+      <div id="modalBodyContainer">
+        <!-- Rendered Readonly Details -->
+      </div>
     </div>
   </div>
 
-  <div class="toast" id="toast">บันทึกเรียบร้อย</div>
+  <div class="toast" id="appToast">บันทึกข้อมูลเรียบร้อย</div>
 
   <script>
     /**
-     * ==========================================
-     * 1. DATA LAYER (Data Storage & Isolation)
-     * ==========================================
-     * - แยกอิสระจาก UI พร้อมเชื่อมต่อ REST/GraphQL API ในอนาคต
-     * - เก็บข้อมูลแยกเป็น Record ตาม Key ของวันที่ (เช่น "2026-09-21")
-     * - ภาพถูก serialize เก็บเป็น Base64 Data URL ผูกติดกับ record นั้นๆ
+     * =========================================================================
+     * 1. DATA LAYER (Storage & Business Rules Enforcement)
+     * =========================================================================
+     * - จัดเก็บข้อมูลแยกตาม Record Key วันที่จริงของเครื่อง (เช่น "daily_record_2026-09-21")
+     * - บังคับ Rule ในระดับ Logic: saveTodayRecord() จะอนุญาตให้บันทึกเฉพาะ "วันปัจจุบัน" เท่านั้น
+     * - ห้ามฟังก์ชันใดๆ เขียนทับข้อมูลของวันย้อนหลัง
      */
-    const StorageService = {
-      PREFIX: "daily_tracker_record_",
+    const DataLayer = {
+      STORAGE_PREFIX: "daily_record_",
 
-      // คืนค่าวันที่ปัจจุบันในรูปแบบ YYYY-MM-DD อิงตาม Local Time
+      // วันที่ปัจจุบัน (Local YYYY-MM-DD)
       getTodayKey() {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
       },
 
-      // ดึง Record ตาม Key วันที่
+      // ดึง Record ของวันที่กำหนด (Read-Only)
       getRecord(dateKey) {
         try {
-          const raw = localStorage.getItem(this.PREFIX + dateKey);
+          const raw = localStorage.getItem(this.STORAGE_PREFIX + dateKey);
           return raw ? JSON.parse(raw) : null;
         } catch (e) {
-          console.error("Storage read error:", e);
+          console.error("DataLayer getRecord error:", e);
           return null;
         }
       },
 
-      // บันทึก Record สำหรับวันนั้น
-      saveRecord(dateKey, data) {
+      // บันทึกเฉพาะ Record ของ "วันนี้" เท่านั้น
+      // บังคับ Business Rule: ห้ามเขียนทับวันที่ไม่ใช่ปัจจุบัน
+      saveTodayRecord(data) {
+        const todayKey = this.getTodayKey();
+        
+        // Logical Gate: ไม่ว่าจะส่ง targetDate ใดมา จะถูก override เป็น todayKey เสมอ
+        const record = {
+          dateKey: todayKey,
+          updatedAt: new Date().toISOString(),
+          status: data.status || 'finished',
+          notes: data.notes || '',
+          photoBase64: data.photoBase64 || null
+        };
+
         try {
-          const record = {
-            dateKey: dateKey,
-            updatedAt: new Date().toISOString(),
-            status: data.status || 'finished',
-            notes: data.notes || '',
-            photoBase64: data.photoBase64 || null
-          };
-          localStorage.setItem(this.PREFIX + dateKey, JSON.stringify(record));
+          localStorage.setItem(this.STORAGE_PREFIX + todayKey, JSON.stringify(record));
           return record;
         } catch (e) {
-          console.error("Storage write error:", e);
-          throw new Error("พื้นที่จัดเก็บเต็มหรือไม่สามารถบันทึกได้");
+          console.error("DataLayer save error:", e);
+          throw new Error("พื้นที่จัดเก็บบนเบราว์เซอร์เต็มหรือไม่สามารถบันทึกได้");
         }
       },
 
-      // ดึงรายการประวัติย้อนหลังทั้งหมด (เรียงจากล่าสุดไปเก่าสุด)
-      getAllHistory(excludeToday = false) {
-        const todayKey = this.getTodayKey();
+      // ดึงประวัติทั้งหมด เรียงจากล่าสุดไปเก่าสุด
+      getAllRecords() {
         const records = [];
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
-          if (key && key.startsWith(this.PREFIX)) {
-            const dateKey = key.replace(this.PREFIX, "");
-            if (excludeToday && dateKey === todayKey) continue;
-            const item = this.getRecord(dateKey);
-            if (item) records.push(item);
+          if (key && key.startsWith(this.STORAGE_PREFIX)) {
+            const dateKey = key.replace(this.STORAGE_PREFIX, "");
+            const r = this.getRecord(dateKey);
+            if (r) records.push(r);
           }
         }
-        // เรียงจากวันที่ใหม่สุดไปเก่าสุด
         records.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
         return records;
       }
     };
 
     /**
-     * ==========================================
-     * 2. UI & CONTROLLER LAYER
-     * ==========================================
+     * =========================================================================
+     * 2. ROUTER LAYER (สลับหน้า 1: หน้าหลัก / หน้า 2: หน้าบันทึก)
+     * =========================================================================
      */
-    const AppUI = {
-      currentActiveDateKey: null,
-      currentPhotoBase64: null,
+    const AppRouter = {
+      currentView: 'home',
 
-      init() {
-        this.currentActiveDateKey = StorageService.getTodayKey();
-        this.renderDateLabels();
-        this.loadTodayData();
-        this.startMidnightCheckWatcher();
-      },
+      navigate(target) {
+        this.currentView = target;
 
-      // แสดงวันที่ปัจจุบันในภาษาไทย
-      renderDateLabels() {
-        const now = new Date();
-        const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
-        const thaiDate = now.toLocaleDateString('th-TH', options);
-        document.getElementById('todayDateLabel').textContent = thaiDate;
-        document.getElementById('clockDisplay').textContent = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-      },
+        const viewHome = document.getElementById('viewHome');
+        const viewRecord = document.getElementById('viewRecord');
+        const navBtnHome = document.getElementById('navBtnHome');
+        const navBtnRecord = document.getElementById('navBtnRecord');
 
-      // สลับแท็บ วันนี้ / ข้อมูลย้อนหลัง
-      switchTab(tab) {
-        const tabToday = document.getElementById('tabToday');
-        const tabHistory = document.getElementById('tabHistory');
-        const panelToday = document.getElementById('panelToday');
-        const panelHistory = document.getElementById('panelHistory');
-
-        if (tab === 'today') {
-          tabToday.classList.add('active');
-          tabHistory.classList.remove('active');
-          panelToday.classList.add('active');
-          panelHistory.classList.remove('active');
-          this.loadTodayData();
-        } else {
-          tabHistory.classList.add('active');
-          tabToday.classList.remove('active');
-          panelHistory.classList.add('active');
-          panelToday.classList.remove('active');
-          this.renderHistoryList();
+        if (target === 'home') {
+          viewHome.classList.add('active');
+          viewRecord.classList.remove('active');
+          navBtnHome.classList.add('active');
+          navBtnRecord.classList.remove('active');
+          HomeController.refresh();
+        } else if (target === 'record') {
+          viewRecord.classList.add('active');
+          viewHome.classList.remove('active');
+          navBtnRecord.classList.add('active');
+          navBtnHome.classList.remove('active');
+          RecordController.initForm();
         }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    };
+
+    /**
+     * =========================================================================
+     * 3. CONTROLLER 1: หน้าหลัก (HOME) — แสดงผลอย่างเดียว
+     * =========================================================================
+     */
+    const HomeController = {
+      refresh() {
+        const todayKey = DataLayer.getTodayKey();
+        const todayRecord = DataLayer.getRecord(todayKey);
+
+        // แสดงหัววันที่ภาษาไทย
+        const now = new Date();
+        const dateStringThai = now.toLocaleDateString('th-TH', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        });
+        document.getElementById('homeTodayDateLabel').textContent = dateStringThai;
+
+        // 1.1 ตรวจสอบว่าวันนี้มี Record หรือยัง
+        const todaySummaryCard = document.getElementById('todaySummaryCard');
+        const todayEmptyCard = document.getElementById('todayEmptyCard');
+
+        if (todayRecord) {
+          todayEmptyCard.style.display = 'none';
+          todaySummaryCard.style.display = 'block';
+
+          // รูปภาพ
+          const img = document.getElementById('todaySummaryImg');
+          const imgEmpty = document.getElementById('todaySummaryImgEmpty');
+          if (todayRecord.photoBase64) {
+            img.src = todayRecord.photoBase64;
+            img.style.display = 'block';
+            imgEmpty.style.display = 'none';
+          } else {
+            img.style.display = 'none';
+            imgEmpty.style.display = 'flex';
+          }
+
+          // สถานะ badge
+          const statusBadge = document.getElementById('todaySummaryStatusBadge');
+          const statusConfig = this.getStatusConfig(todayRecord.status);
+          statusBadge.className = `badge ${statusConfig.className}`;
+          statusBadge.innerHTML = `${statusConfig.icon} ${statusConfig.text}`;
+
+          // หมายเหตุ
+          const notesElem = document.getElementById('todaySummaryNotes');
+          notesElem.textContent = todayRecord.notes ? todayRecord.notes : '(ไม่มีบันทึกหมายเหตุ)';
+
+          // เวลาอัปเดต
+          const updatedTime = new Date(todayRecord.updatedAt).toLocaleTimeString('th-TH', {
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          document.getElementById('todaySummaryTimestamp').textContent = `บันทึกเมื่อเวลา ${updatedTime} น.`;
+        } else {
+          // ยังไม่มีการบันทึกวันนี้
+          todaySummaryCard.style.display = 'none';
+          todayEmptyCard.style.display = 'flex';
+        }
+
+        // 1.2 แสดงรายการประวัติย้อนหลัง (ทั้งหมดที่เคยบันทึกไว้)
+        this.renderHistory();
       },
 
-      // โหลดข้อมูลของ "วันนี้" มาใส่ฟอร์ม
-      loadTodayData() {
-        const todayKey = StorageService.getTodayKey();
-        const record = StorageService.getRecord(todayKey);
+      renderHistory() {
+        const container = document.getElementById('homeHistoryList');
+        const records = DataLayer.getAllRecords();
 
-        const form = document.getElementById('todayForm');
-        if (record) {
-          const statusRadio = form.querySelector(`input[name="status"][value="${record.status}"]`);
-          if (statusRadio) statusRadio.checked = true;
-          document.getElementById('notesInput').value = record.notes || '';
+        if (records.length === 0) {
+          container.innerHTML = `
+            <div style="text-align:center;padding:30px 10px;color:var(--text-muted);font-size:13px;">
+              📭 ยังไม่มีประวัติการบันทึก
+            </div>
+          `;
+          return;
+        }
 
-          if (record.photoBase64) {
-            this.setPhotoPreview(record.photoBase64);
+        const todayKey = DataLayer.getTodayKey();
+
+        container.innerHTML = records.map(item => {
+          const isToday = item.dateKey === todayKey;
+          const dateObj = new Date(item.dateKey + 'T00:00:00');
+          const dateTitle = dateObj.toLocaleDateString('th-TH', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric'
+          });
+
+          const statusCfg = this.getStatusConfig(item.status);
+
+          const thumb = item.photoBase64
+            ? `<img src="${item.photoBase64}" class="history-card-thumb" alt="photo">`
+            : `<div class="history-card-thumb">🍽️</div>`;
+
+          return `
+            <div class="history-card-item" onclick="HistoryModal.open('${item.dateKey}')">
+              ${thumb}
+              <div class="history-card-details">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span class="history-card-date">${dateTitle} ${isToday ? '<span style="color:var(--primary);font-size:11px;">(วันนี้)</span>' : ''}</span>
+                  <span class="badge ${statusCfg.className}" style="font-size:11px;padding:2px 8px;">${statusCfg.icon} ${statusCfg.text}</span>
+                </div>
+                <div class="history-card-snippet">${item.notes || 'ไม่มีหมายเหตุ'}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      },
+
+      getStatusConfig(status) {
+        switch (status) {
+          case 'finished': return { text: 'กินหมด', className: 'finished', icon: '🍽️' };
+          case 'partial': return { text: 'กินบางส่วน', className: 'partial', icon: '🥣' };
+          case 'none': return { text: 'ไม่กิน', className: 'none', icon: '❌' };
+          default: return { text: status, className: 'partial', icon: '📝' };
+        }
+      }
+    };
+
+    /**
+     * =========================================================================
+     * 4. CONTROLLER 2: หน้าบันทึก (RECORD) — กรอกข้อมูลของ "วันนี้" เท่านั้น
+     * =========================================================================
+     */
+    const RecordController = {
+      photoBase64Cache: null,
+
+      initForm() {
+        const todayKey = DataLayer.getTodayKey();
+        const now = new Date();
+        document.getElementById('recordDateLabel').textContent = now.toLocaleDateString('th-TH', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        });
+
+        // ดึง Record เดิมของวันนี้ (ถ้ามี) มาใส่ฟอร์มเผื่อแก้ไข
+        const existing = DataLayer.getRecord(todayKey);
+        const form = document.getElementById('recordForm');
+
+        if (existing) {
+          const radio = form.querySelector(`input[name="recordStatus"][value="${existing.status}"]`);
+          if (radio) radio.checked = true;
+          document.getElementById('recordNotes').value = existing.notes || '';
+          if (existing.photoBase64) {
+            this.setPhotoPreview(existing.photoBase64);
           } else {
-            this.clearPhotoPreview();
+            this.resetPhoto();
           }
         } else {
-          // ค่าเริ่มต้นถ้ายังไม่เคยบันทึก
-          form.querySelector('input[name="status"][value="finished"]').checked = true;
-          document.getElementById('notesInput').value = '';
-          this.clearPhotoPreview();
+          // ค่าเริ่มต้น
+          form.querySelector('input[name="recordStatus"][value="finished"]').checked = true;
+          document.getElementById('recordNotes').value = '';
+          this.resetPhoto();
         }
       },
 
-      // จัดการเลือกรูปภาพ & แปลงเป็น Base64
-      handlePhotoSelect(event) {
+      onFilePicked(event) {
         const file = event.target.files && event.target.files[0];
         if (!file) return;
 
-        // แสดงข้อความกำลังโหลดรูป
-        const placeholder = document.getElementById('photoPlaceholder');
-        if (placeholder) {
-          placeholder.innerHTML = `<div style="font-size:14px;color:var(--primary);font-weight:600;">⏳ กำลังโหลดรูปภาพ...</div>`;
-        }
+        const placeholder = document.getElementById('photoPlaceholderContent');
+        placeholder.innerHTML = `<div style="font-size:14px;color:var(--primary);font-weight:600;">⏳ กำลังโหลดรูปภาพ...</div>`;
 
         const reader = new FileReader();
         reader.onerror = () => {
-          alert("ไม่สามารถอ่านไฟล์รูปได้ กรุณาลองใหม่อีกครั้ง");
-          AppUI.clearPhotoPreview();
+          alert("ไม่สามารถอ่านไฟล์ได้ กรุณาลองใหม่อีกครั้ง");
+          RecordController.resetPhoto();
         };
 
         reader.onload = (e) => {
-          const rawResult = e.target.result;
-          if (!rawResult) return;
+          const rawData = e.target.result;
+          if (!rawData) return;
 
-          // สร้าง Image เพื่อย่อขนาดให้พอดี ไม่เกิน 1000px
+          // พยายามบีบอัดภาพด้วย Canvas
           const img = new Image();
           img.onerror = () => {
-            // ถ้า decode ไม่ได้ ให้ใช้ base64 ดั้งเดิมตรงๆ
-            AppUI.setPhotoPreview(rawResult);
+            RecordController.setPhotoPreview(rawData);
           };
           img.onload = () => {
             try {
               const canvas = document.createElement('canvas');
-              const MAX_SIZE = 800;
+              const MAX_WIDTH = 800;
               let width = img.width;
               let height = img.height;
 
-              if (width > height) {
-                if (width > MAX_SIZE) {
-                  height = Math.round((height * MAX_SIZE) / width);
-                  width = MAX_SIZE;
-                }
-              } else {
-                if (height > MAX_SIZE) {
-                  width = Math.round((width * MAX_SIZE) / height);
-                  height = MAX_SIZE;
-                }
+              if (width > MAX_WIDTH) {
+                height = Math.round((height * MAX_WIDTH) / width);
+                width = MAX_WIDTH;
               }
 
               canvas.width = width;
@@ -827,145 +1199,89 @@
               const ctx = canvas.getContext('2d');
               ctx.drawImage(img, 0, 0, width, height);
 
-              const compressedBase64 = canvas.toDataURL('image/jpeg', 0.82);
-              AppUI.setPhotoPreview(compressedBase64);
+              const compressed = canvas.toDataURL('image/jpeg', 0.82);
+              RecordController.setPhotoPreview(compressed);
             } catch (err) {
-              console.warn("Canvas compress fallback:", err);
-              AppUI.setPhotoPreview(rawResult);
+              RecordController.setPhotoPreview(rawData);
             }
           };
-          img.src = rawResult;
+          img.src = rawData;
         };
         reader.readAsDataURL(file);
       },
 
       setPhotoPreview(base64) {
-        this.currentPhotoBase64 = base64;
-        const img = document.getElementById('todayImgPreview');
-        const placeholder = document.getElementById('photoPlaceholder');
-        const removeBtn = document.getElementById('photoRemoveBtn');
+        this.photoBase64Cache = base64;
+        const img = document.getElementById('formImgPreview');
+        const placeholder = document.getElementById('photoPlaceholderContent');
+        const clearBtn = document.getElementById('photoClearBtn');
 
-        if (img) {
-          img.src = base64;
-          img.style.display = 'block';
-        }
-        if (placeholder) {
-          placeholder.style.display = 'none';
-        }
-        if (removeBtn) {
-          removeBtn.style.display = 'flex';
-        }
+        img.src = base64;
+        img.style.display = 'block';
+        placeholder.style.display = 'none';
+        clearBtn.style.display = 'flex';
       },
 
-      clearPhotoPreview() {
-        this.currentPhotoBase64 = null;
-        const img = document.getElementById('todayImgPreview');
-        const placeholder = document.getElementById('photoPlaceholder');
-        const removeBtn = document.getElementById('photoRemoveBtn');
-        const input = document.getElementById('photoInput');
+      resetPhoto() {
+        this.photoBase64Cache = null;
+        const img = document.getElementById('formImgPreview');
+        const placeholder = document.getElementById('photoPlaceholderContent');
+        const clearBtn = document.getElementById('photoClearBtn');
+        const input = document.getElementById('hiddenPhotoInput');
 
-        if (img) {
-          img.src = '';
-          img.style.display = 'none';
-        }
-        if (placeholder) {
-          placeholder.innerHTML = `
-            <svg viewBox="0 0 24 24" style="width:32px;height:32px;fill:none;stroke:currentColor;stroke-width:2;">
-              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-              <circle cx="12" cy="13" r="4"></circle>
-            </svg>
-            <span>แตะเพื่อถ่ายรูป / เลือกรูป</span>
-          `;
-          placeholder.style.display = 'flex';
-        }
-        if (removeBtn) {
-          removeBtn.style.display = 'none';
-        }
-        if (input) {
-          input.value = '';
-        }
+        img.src = '';
+        img.style.display = 'none';
+        placeholder.innerHTML = `
+          <svg viewBox="0 0 24 24">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+            <circle cx="12" cy="13" r="4"></circle>
+          </svg>
+          <span>แตะที่นี่เพื่อถ่ายรูปหรือเลือกไฟล์</span>
+        `;
+        placeholder.style.display = 'flex';
+        clearBtn.style.display = 'none';
+        input.value = '';
       },
 
-      removePhoto(event) {
+      clearPhoto(event) {
         if (event) event.stopPropagation();
-        this.clearPhotoPreview();
+        this.resetPhoto();
       },
 
-      // บันทึกข้อมูลวันนี้
-      saveToday(event) {
+      handleSubmit(event) {
         event.preventDefault();
-        const todayKey = StorageService.getTodayKey();
-        const status = document.querySelector('input[name="status"]:checked').value;
-        const notes = document.getElementById('notesInput').value.trim();
+        const status = document.querySelector('input[name="recordStatus"]:checked').value;
+        const notes = document.getElementById('recordNotes').value.trim();
 
         try {
-          StorageService.saveRecord(todayKey, {
-            status,
-            notes,
-            photoBase64: this.currentPhotoBase64
+          // บันทึกเฉพาะวันปัจจุบันเสมอ
+          DataLayer.saveTodayRecord({
+            status: status,
+            notes: notes,
+            photoBase64: this.photoBase64Cache
           });
-          this.showToast("✅ บันทึกข้อมูลวันนี้เรียบร้อยแล้ว");
+
+          Toast.show("✅ บันทึกข้อมูลวันนี้เรียบร้อยแล้ว");
+
+          // กลับไปหน้าหลักทันทีตามข้อกำหนด
+          setTimeout(() => {
+            AppRouter.navigate('home');
+          }, 350);
         } catch (err) {
           alert(err.message);
         }
-      },
+      }
+    };
 
-      // แสดงประวัติย้อนหลัง (Read-only list)
-      renderHistoryList() {
-        const container = document.getElementById('historyContainer');
-        const historyRecords = StorageService.getAllHistory();
-
-        if (historyRecords.length === 0) {
-          container.innerHTML = `
-            <div class="empty-state">
-              <div style="font-size: 32px; margin-bottom: 8px;">📭</div>
-              <div>ยังไม่มีบันทึกข้อมูลย้อนหลัง</div>
-            </div>
-          `;
-          return;
-        }
-
-        const todayKey = StorageService.getTodayKey();
-
-        container.innerHTML = historyRecords.map(item => {
-          const isToday = item.dateKey === todayKey;
-          const dateObj = new Date(item.dateKey + 'T00:00:00');
-          const dateStr = dateObj.toLocaleDateString('th-TH', {
-            weekday: 'short',
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric'
-          });
-
-          const statusMap = {
-            finished: { label: 'กินหมด', class: 'finished' },
-            partial: { label: 'บางส่วน', class: 'partial' },
-            none: { label: 'ไม่กิน', class: 'none' }
-          };
-
-          const s = statusMap[item.status] || { label: item.status, class: 'partial' };
-          const imgThumb = item.photoBase64
-            ? `<img src="${item.photoBase64}" class="history-thumb" alt="photo">`
-            : `<div class="history-thumb" style="display:flex;align-items:center;justify-content:center;font-size:22px;">🍽️</div>`;
-
-          return `
-            <div class="history-card" onclick="AppUI.openReadOnlyModal('${item.dateKey}')">
-              ${imgThumb}
-              <div class="history-info">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                  <span class="history-date">${dateStr} ${isToday ? '<span style="font-size:11px;color:var(--primary);">(วันนี้)</span>' : ''}</span>
-                  <span class="status-badge ${s.class}">${s.label}</span>
-                </div>
-                <div class="history-preview">${item.notes || 'ไม่มีหมายเหตุ'}</div>
-              </div>
-            </div>
-          `;
-        }).join('');
-      },
-
-      // เปิด Modal รายละเอียด (Read-Only: ไม่มีปุ่มแก้ไขหรือลบ)
-      openReadOnlyModal(dateKey) {
-        const item = StorageService.getRecord(dateKey);
+    /**
+     * =========================================================================
+     * 5. HISTORY MODAL (READ-ONLY VIEW)
+     * =========================================================================
+     * - ข้อมูลในส่วนนี้ดูได้อย่างเดียว ห้ามมีปุ่มแก้ไขหรือลบ
+     */
+    const HistoryModal = {
+      open(dateKey) {
+        const item = DataLayer.getRecord(dateKey);
         if (!item) return;
 
         const dateObj = new Date(item.dateKey + 'T00:00:00');
@@ -978,33 +1294,29 @@
 
         document.getElementById('modalDateTitle').textContent = dateStr;
 
-        const statusMap = {
-          finished: { label: 'กินหมด 🍽️', class: 'finished' },
-          partial: { label: 'กินบางส่วน 🥣', class: 'partial' },
-          none: { label: 'ไม่กิน ❌', class: 'none' }
-        };
-        const s = statusMap[item.status] || { label: item.status, class: 'partial' };
+        const statusCfg = HomeController.getStatusConfig(item.status);
 
-        const modalBody = document.getElementById('modalBody');
-        modalBody.innerHTML = `
-          <div class="readonly-field">
-            <label>สถานะ</label>
-            <div><span class="status-badge ${s.class}" style="font-size: 13px; padding: 6px 12px;">${s.label}</span></div>
-          </div>
-
+        const body = document.getElementById('modalBodyContainer');
+        body.innerHTML = `
           ${item.photoBase64 ? `
-            <div class="readonly-field">
-              <label>รูปภาพบันทึก</label>
-              <img src="${item.photoBase64}" class="readonly-img" alt="บันทึกภาพ">
-            </div>
+            <img src="${item.photoBase64}" class="readonly-image" alt="รูปบันทึกย้อนหลัง">
           ` : ''}
 
-          <div class="readonly-field">
-            <label>หมายเหตุ</label>
-            <p>${item.notes ? item.notes.replace(/\n/g, '<br>') : 'ไม่มีบันทึกเพิ่มเติม'}</p>
+          <div class="readonly-section">
+            <div class="readonly-label">สถานะการกิน</div>
+            <div>
+              <span class="badge ${statusCfg.className}" style="font-size:13px;padding:5px 12px;">
+                ${statusCfg.icon} ${statusCfg.text}
+              </span>
+            </div>
           </div>
 
-          <div style="font-size: 11px; color: var(--text-muted); text-align: right; margin-top: 14px;">
+          <div class="readonly-section" style="margin-top:10px;">
+            <div class="readonly-label">หมายเหตุ / ข้อมูลเพิ่มเติม</div>
+            <div class="readonly-text">${item.notes ? item.notes.replace(/\n/g, '<br>') : 'ไม่มีบันทึกเพิ่มเติม'}</div>
+          </div>
+
+          <div style="font-size:11px;color:var(--text-muted);text-align:right;margin-top:16px;">
             บันทึกเมื่อ: ${new Date(item.updatedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.
           </div>
         `;
@@ -1012,37 +1324,52 @@
         document.getElementById('readonlyModal').classList.add('open');
       },
 
-      closeModal() {
+      close() {
         document.getElementById('readonlyModal').classList.remove('open');
-      },
-
-      showToast(msg) {
-        const toast = document.getElementById('toast');
-        toast.textContent = msg;
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2500);
-      },
-
-      // ระบบตรวจจับการข้ามวัน (Midnight Transition Watcher)
-      // ตรวจสอบทุกๆ 30 วินาที หากวันที่เปลี่ยน หน้านี้จะรีเซ็ตอัตโนมัติทันที
-      startMidnightCheckWatcher() {
-        setInterval(() => {
-          const nowKey = StorageService.getTodayKey();
-          if (nowKey !== this.currentActiveDateKey) {
-            console.log("ข้ามวันใหม่แล้ว:", nowKey);
-            this.currentActiveDateKey = nowKey;
-            this.renderDateLabels();
-            // รีเซ็ต/โหลดข้อมูลสำหรับวันใหม่
-            this.loadTodayData();
-            this.showToast("🌅 เข้าสู่วันใหม่แล้ว สลับหน้าเป็นวันปัจจุบัน");
-          }
-        }, 30000);
       }
     };
 
-    // Initialize on page load
+    const Toast = {
+      show(text) {
+        const t = document.getElementById('appToast');
+        t.textContent = text;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 2500);
+      }
+    };
+
+    /**
+     * =========================================================================
+     * 6. SYSTEM CLOCK & MIDNIGHT WATCHER
+     * =========================================================================
+     */
+    let activeDateTracker = DataLayer.getTodayKey();
+
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('realtimeClock').textContent = 
+        `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      // ตรวจสอบการข้ามเที่ยงคืน (Midnight Check)
+      const currentDay = DataLayer.getTodayKey();
+      if (currentDay !== activeDateTracker) {
+        console.log("ข้ามเที่ยงคืนสู่ปฏิทินวันใหม่:", currentDay);
+        activeDateTracker = currentDay;
+        // หากอยู่ในหน้าหลัก ให้รีเฟรชสลับเป็นวันใหม่อัตโนมัติ
+        if (AppRouter.currentView === 'home') {
+          HomeController.refresh();
+        } else {
+          RecordController.initForm();
+        }
+        Toast.show("🌅 เริ่มต้นวันใหม่แล้ว");
+      }
+    }
+
+    // App Initialization
     window.addEventListener('DOMContentLoaded', () => {
-      AppUI.init();
+      HomeController.refresh();
+      updateClock();
+      setInterval(updateClock, 10000);
     });
   </script>
 </body>
