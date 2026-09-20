@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { CalendarIcon, ChevronLeft, ChevronRight, PawPrint, Plus } from "lucide-react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { DogHeader } from "@/components/dog-header"
 import { MealCard } from "@/components/meal-card"
@@ -25,18 +26,31 @@ function formatThaiDate(date: Date) {
   })
 }
 
-export default function TodayPage() {
+function TodayPageContent() {
   const { dogs, logs, isLoading } = useAppStore()
+  const searchParams = useSearchParams()
   
   // View mode: "today" | "history"
   const [viewMode, setViewMode] = useState<"today" | "history">("today")
-  // Custom date for history mode (defaults to yesterday)
+  // Custom date for history mode (defaults to yesterday or query param date)
   const [historyDate, setHistoryDate] = useState<Date>(() => {
     const y = new Date()
     y.setDate(y.getDate() - 1)
     return y
   })
   const [calendarOpen, setCalendarOpen] = useState(false)
+
+  // Listen to ?date=YYYY-MM-DD query param from stats calendar
+  useEffect(() => {
+    const paramDate = searchParams.get("date")
+    if (paramDate) {
+      const parsed = new Date(paramDate)
+      if (!isNaN(parsed.getTime())) {
+        setHistoryDate(parsed)
+        setViewMode("history")
+      }
+    }
+  }, [searchParams])
 
   const activeDate = viewMode === "today" ? new Date() : historyDate
   const selectedLogs = logs.filter((l) => isSameBangkokDay(l.at, activeDate))
@@ -200,5 +214,13 @@ export default function TodayPage() {
         )
       })}
     </div>
+  )
+}
+
+export default function TodayPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-center text-sm text-muted-foreground">กำลังโหลด...</div>}>
+      <TodayPageContent />
+    </Suspense>
   )
 }
