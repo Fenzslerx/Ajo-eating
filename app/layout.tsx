@@ -4,6 +4,7 @@ import { AppStoreProvider } from '@/lib/app-store'
 import { AppShell } from '@/components/app-shell'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
+import { PwaProvider } from '@/components/pwa-provider'
 import './globals.css'
 
 
@@ -51,6 +52,7 @@ export default function RootLayout({
           <AppStoreProvider>
             <AppShell>{children}</AppShell>
             <Toaster position="top-center" />
+            <PwaProvider />
           </AppStoreProvider>
         </ThemeProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -47,6 +47,7 @@ export default function SettingsPage() {
   const [scheduleTime, setScheduleTime] = useState("")
   const [memberEmail, setMemberEmail] = useState("")
   const [deleteDogOpen, setDeleteDogOpen] = useState(false)
+  useEffect(() => { if (!activeDogId && dogs[0]) setActiveDogId(dogs[0].id) }, [activeDogId, dogs])
 
   function handleAddDog(e: React.FormEvent) {
     e.preventDefault()
