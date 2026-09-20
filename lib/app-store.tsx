@@ -16,6 +16,8 @@ type Store = {
   pendingCount: number;
   isOnline: boolean;
   isLoading: boolean;
+  load: () => Promise<void>;
+  signOut: () => Promise<void>;
   addLog: (x: Omit<MealLog, "id" | "by">) => void;
   updateLog: (id: string, x: Partial<MealLog>) => void;
   removeLog: (id: string) => void;
@@ -78,14 +80,20 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
-    // Safety timeout — force isLoading=false after 8s no matter what
+    setIsLoading(true);
     const timeout = setTimeout(() => setIsLoading(false), 8000);
     try {
       const s = createClient();
-      const { data: { user } } = await s.auth.getUser();
-      if (!user) {
+      // Use getSession() so we verify the active session and token immediately
+      const { data: { session } } = await s.auth.getSession();
+      if (!session || !session.user) {
+        // No session yet: keep state clean and stop
+        setIsLoading(false);
+        clearTimeout(timeout);
         return;
       }
+
+      const user = session.user;
       setUserId(user.id);
       setUserEmail(user.email || "");
 
@@ -183,8 +191,30 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     reloadTimer.current = setTimeout(() => void load(), 500);
   }, [load]);
 
+  // Listen to Supabase auth state change: when SIGNED_IN or TOKEN_REFRESHED, trigger load() immediately
   useEffect(() => {
+    const s = createClient();
+    const { data: { subscription } } = s.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
+        void load();
+      } else if (event === "SIGNED_OUT") {
+        setDogs([]);
+        setSchedules([]);
+        setLogs([]);
+        setMembers([]);
+        setProfiles([]);
+        setUserId("");
+        setUserEmail("");
+        setIsLoading(false);
+      }
+    });
+
+    // Initial load call
     void load();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [load]);
 
   useEffect(() => {
@@ -213,6 +243,19 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, [load, debouncedLoad]);
 
   // ─── mutations ──────────────────────────────────────────────────────────────
+
+  const signOut = useCallback(async () => {
+    const s = createClient();
+    await s.auth.signOut();
+    setDogs([]);
+    setSchedules([]);
+    setLogs([]);
+    setMembers([]);
+    setProfiles([]);
+    setUserId("");
+    setUserEmail("");
+    window.location.href = "/login";
+  }, []);
 
   const addLog = useCallback(
     (x: Omit<MealLog, "id" | "by">) => {
@@ -326,18 +369,17 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       void (async () => {
         try {
           const s = createClient();
-          const { data } = await s.auth.getUser();
-          if (!data.user) return;
+          const { data: { session } } = await s.auth.getSession();
+          if (!session?.user) return;
           const { data: inserted, error } = await s
             .from("dogs")
-            .insert({ name, photo: photo || null, owner_id: data.user.id })
+            .insert({ name, photo: photo || null, owner_id: session.user.id })
             .select()
             .single();
 
           if (error) console.error("addDog error:", error.message);
 
           if (inserted?.id) {
-            // Save extra attributes to local storage record
             const local = getLocalDogProfiles();
             local[inserted.id] = { name, breed, birthdate, photo };
             localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
@@ -538,6 +580,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       pendingCount: pending,
       isOnline: online,
       isLoading,
+      load,
+      signOut,
       addLog,
       updateLog,
       removeLog,
@@ -555,7 +599,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     [
       userId, userEmail, profiles, dogs, schedules, logs, members,
       pending, online, isLoading,
-      addLog, updateLog, removeLog, addDog, updateDog, removeDog, clearAllData,
+      load, signOut, addLog, updateLog, removeLog, addDog, updateDog, removeDog, clearAllData,
       addSchedule, removeSchedule, addMember, removeMember, setMemberRole,
     ]
   );

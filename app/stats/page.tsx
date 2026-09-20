@@ -46,7 +46,7 @@ function formatISODate(d: Date): string {
 }
 
 export default function StatsPage() {
-  const { dogs, logs } = useAppStore()
+  const { dogs, logs, isLoading } = useAppStore()
   const [trendRange, setTrendRange] = useState<DateRangeOption>("7d")
   const [activeMealConfigs, setActiveMealConfigs] = useState(() => getActiveMealConfig())
 
@@ -314,7 +314,17 @@ export default function StatsPage() {
     return items
   }, [logs, mealTypeStats, overviewStats.streak])
 
-  // If completely no logs at all
+  // Show loading indicator while fetching
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground">กำลังโหลดข้อมูลสถิติ...</p>
+      </div>
+    )
+  }
+
+  // If completely no logs at all (only after loading is complete)
   if (logs.length === 0) {
     return (
       <div className="flex flex-col gap-5 px-4 pt-4">

@@ -9,6 +9,7 @@ import {
   Database,
   Download,
   Info,
+  LogOut,
   PawPrint,
   Plus,
   RotateCcw,
@@ -49,6 +50,8 @@ export default function SettingsPage() {
     removeDog,
     clearAllData,
     isOnline,
+    isLoading,
+    signOut,
   } = useAppStore()
 
   // 1. Profile State
@@ -220,6 +223,15 @@ export default function SettingsPage() {
     }
     void checkBackend()
   }, [])
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground">กำลังโหลดการตั้งค่า...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-6 px-4 pt-4 pb-14">
@@ -610,6 +622,21 @@ export default function SettingsPage() {
           </a>
         </div>
       </Card>
+
+      {/* Logout button */}
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full rounded-2xl border-border py-6 text-sm font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors gap-2"
+        onClick={() => {
+          if (confirm("ต้องการออกจากระบบใช่หรือไม่?")) {
+            void signOut()
+          }
+        }}
+      >
+        <LogOut className="size-4" />
+        ออกจากระบบ
+      </Button>
 
       {/* Modal: เพิ่มน้องหมาตัวใหม่ */}
       <Dialog open={newDogOpen} onOpenChange={setNewDogOpen}>

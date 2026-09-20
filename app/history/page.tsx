@@ -30,7 +30,7 @@ function formatDateTime(iso: string) {
 }
 
 export default function HistoryPage() {
-  const { dogs, schedules, logs, profileFor } = useAppStore()
+  const { dogs, schedules, logs, profileFor, isLoading } = useAppStore()
   const [range, setRange] = useState<DateRangeOption>("7d")
   const [dogFilter, setDogFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<MealStatus | "all">("all")
@@ -77,7 +77,12 @@ export default function HistoryPage() {
         </div>
       </header>
 
-      {filtered.length === 0 ? (
+      {isLoading ? (
+        <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-6 text-center">
+          <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">กำลังโหลดประวัติ...</p>
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-16 text-center">
           <Search className="size-8 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm text-muted-foreground">ไม่พบบันทึกที่ตรงกับตัวกรอง</p>
