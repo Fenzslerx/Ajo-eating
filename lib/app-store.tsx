@@ -62,11 +62,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
+    // Safety timeout — force isLoading=false after 8s no matter what
+    const timeout = setTimeout(() => setIsLoading(false), 8000);
     try {
       const s = createClient();
       const { data: { user } } = await s.auth.getUser();
       if (!user) {
-        setIsLoading(false);
         return;
       }
       setUserId(user.id);
@@ -113,6 +114,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error("Failed to load store data:", err);
     } finally {
+      clearTimeout(timeout);
       setIsLoading(false);
     }
   }, []);
