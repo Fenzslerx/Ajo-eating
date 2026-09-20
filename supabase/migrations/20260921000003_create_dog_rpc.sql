@@ -31,7 +31,10 @@ end;
 $$;
 
 revoke all on function public.create_dog(text, text) from public;
-grant execute on function public.create_dog(text, text) to authenticated;
+grant execute on function public.create_dog(text, text) to authenticated, anon;
+
+-- Force PostgREST schema cache reload immediately
+notify pgrst, 'reload schema';
 
 -- 2. Drop direct client INSERT policy on dogs
 drop policy if exists "users can create owned dogs" on public.dogs;

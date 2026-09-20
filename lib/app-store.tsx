@@ -483,7 +483,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
       const { data: createdDogRecord, error: rpcError } = await s.rpc("create_dog", {
         dog_name: cleanName,
-        dog_photo: storagePhotoPath,
+        dog_photo: storagePhotoPath ?? null,
       });
 
       if (rpcError) {
