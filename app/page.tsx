@@ -88,8 +88,8 @@ export default function TodayPage() {
     existingLog: MealLog | null
   ) {
     if (existingLog) {
-      updateLog(existingLog.id, { photo_after: photoUrl })
-      toast.success(photoUrl ? "บันทึกรูปภาพแล้ว" : "ลบรูปแล้ว")
+      updateLog(existingLog.id, { dog_id: dogId, photo_after: photoUrl })
+      toast.success(photoUrl ? "กำลังอัปโหลดรูปภาพ..." : "ลบรูปแล้ว")
     } else if (photoUrl) {
       addLog({
         dog_id: dogId,

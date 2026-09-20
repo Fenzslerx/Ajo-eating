@@ -234,6 +234,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           if (x.food !== undefined) payload.food = x.food;
           if (x.note !== undefined) payload.note = x.note;
 
+          // Optimistic local update so photo shows immediately without waiting for storage upload
+          setLogs((prev) =>
+            prev.map((l) => (l.id === id ? { ...l, ...payload, photo_after: x.photo_after ?? l.photo_after } : l))
+          );
+
           if (x.photo_after?.startsWith("blob:") && x.dog_id) {
             // Only upload if we have a valid dog_id (required by RLS policy)
             const blob = await fetch(x.photo_after).then((r) => r.blob());
@@ -241,7 +246,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             const { error } = await s.storage
               .from("dog-photos")
               .upload(path, blob, { contentType: blob.type || "image/jpeg" });
-            if (!error) payload.photo = path;
+            if (!error) {
+              payload.photo = path;
+            } else {
+              console.error("Storage upload error:", error);
+            }
           } else if (x.photo_after === null) {
             payload.photo = null;
           }
