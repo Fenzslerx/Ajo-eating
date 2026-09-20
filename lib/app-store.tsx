@@ -103,6 +103,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         s.from("logs").select("*").order("at", { ascending: false }),
       ]);
 
+      if (d.error) {
+        console.error("[getDogs/load] Error fetching dogs from Supabase:", d.error.message, d.error);
+      }
+      if (sc.error) {
+        console.error("[getSchedules/load] Error fetching schedules from Supabase:", sc.error.message, sc.error);
+      }
+      if (l.error) {
+        console.error("[getLogs/load] Error fetching logs from Supabase:", l.error.message, l.error);
+      }
+
       const localProfiles = getLocalDogProfiles();
       const rawDogs = (d.data ?? []) as any[];
       console.log("[getDogProfile/load]", {
@@ -123,7 +133,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         })
       );
 
+      // Map DB dogs merged with localProfiles
+      const seenDogIds = new Set<string>();
       const dogRows: Dog[] = rawDogs.map((dog, idx) => {
+        seenDogIds.add(dog.id);
         const stored = localProfiles[dog.id] || {};
         return {
           id: dog.id,
@@ -133,6 +146,20 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           breed: stored.breed ?? dog.breed ?? null,
           birthdate: stored.birthdate ?? dog.birthdate ?? null,
         };
+      });
+
+      // If local profiles contain newly added dog not yet returned by DB query (e.g. RLS replication delay)
+      Object.entries(localProfiles).forEach(([id, stored]) => {
+        if (!seenDogIds.has(id) && stored.name) {
+          dogRows.push({
+            id,
+            name: stored.name,
+            photo: stored.photo || null,
+            owner_id: user.id,
+            breed: stored.breed ?? null,
+            birthdate: stored.birthdate ?? null,
+          });
+        }
       });
 
       setDogs(dogRows);
@@ -420,17 +447,21 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           }, { onConflict: "dog_id,user_id" });
 
         if (memberInsertError) {
-          console.warn("[saveDogProfile/addDog] dog_members upsert notice:", memberInsertError.message);
-          // If trigger didn't handle it and manual insert failed, report clearly
-        } else {
-          console.log("[saveDogProfile/addDog] dog_members verified for user:", session.user.id);
+          console.error("[saveDogProfile/addDog] dog_members upsert error:", memberInsertError.message);
+          // Rollback orphan dog row to avoid orphan records in dogs table
+          await s.from("dogs").delete().eq("id", effectiveId);
+          throw new Error(`ไม่สามารถสร้างสิทธิ์เจ้าของน้องหมาได้: ${memberInsertError.message}`);
         }
+
+        console.log("[saveDogProfile/addDog] dog and dog_members created successfully:", {
+          dogId: effectiveId,
+          userId: session.user.id,
+        });
 
         // 3. Persist extended profile in localStorage (dogProfile)
         const local = getLocalDogProfiles();
         local[effectiveId] = { name, breed, birthdate, photo };
         localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
-        window.dispatchEvent(new CustomEvent("dog-profile-changed", { detail: { id: effectiveId, name } }));
 
         // 4. Optimistically add to state immediately
         const newDogObj: Dog = {
@@ -443,12 +474,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         };
         setDogs((prev) => [...prev.filter((d) => d.id !== effectiveId), newDogObj]);
 
+        // Dispatch profile event so other tabs and components know
+        window.dispatchEvent(new CustomEvent("dog-profile-changed", { detail: { id: effectiveId, name } }));
+
         // 5. Reload all store data to sync
         await load();
         return newDogObj;
       } catch (err) {
         console.error("[saveDogProfile/addDog] Exception:", err);
-        return null;
+        throw err;
       }
     },
     [load]
