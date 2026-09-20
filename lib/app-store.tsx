@@ -393,7 +393,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         });
 
         // 1. Insert into Supabase dogs table with explicit ID
-        const { data: insertedList, error } = await s
+        const { data: insertedList, error: dogInsertError } = await s
           .from("dogs")
           .insert({
             id: newDogId,
@@ -403,21 +403,36 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           })
           .select();
 
-        if (error) {
-          console.error("[saveDogProfile/addDog] Supabase insert error:", error.message, error);
-        } else {
-          console.log("[saveDogProfile/addDog] Supabase insert success:", insertedList);
+        if (dogInsertError) {
+          console.error("[saveDogProfile/addDog] Supabase dogs insert error:", dogInsertError.message, dogInsertError);
+          throw new Error(`ไม่สามารถสร้างข้อมูลน้องหมาในระบบได้: ${dogInsertError.message}`);
         }
 
         const effectiveId = insertedList?.[0]?.id || newDogId;
 
-        // 2. Persist extended profile in localStorage (dogProfile)
+        // 2. Explicitly ensure membership in dog_members with role 'owner' (upsert to prevent duplicate if trigger ran)
+        const { error: memberInsertError } = await s
+          .from("dog_members")
+          .upsert({
+            dog_id: effectiveId,
+            user_id: session.user.id,
+            role: "owner",
+          }, { onConflict: "dog_id,user_id" });
+
+        if (memberInsertError) {
+          console.warn("[saveDogProfile/addDog] dog_members upsert notice:", memberInsertError.message);
+          // If trigger didn't handle it and manual insert failed, report clearly
+        } else {
+          console.log("[saveDogProfile/addDog] dog_members verified for user:", session.user.id);
+        }
+
+        // 3. Persist extended profile in localStorage (dogProfile)
         const local = getLocalDogProfiles();
         local[effectiveId] = { name, breed, birthdate, photo };
         localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
         window.dispatchEvent(new CustomEvent("dog-profile-changed", { detail: { id: effectiveId, name } }));
 
-        // 3. Optimistically add to state immediately
+        // 4. Optimistically add to state immediately
         const newDogObj: Dog = {
           id: effectiveId,
           name,
@@ -428,7 +443,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         };
         setDogs((prev) => [...prev.filter((d) => d.id !== effectiveId), newDogObj]);
 
-        // 4. Reload all store data to sync
+        // 5. Reload all store data to sync
         await load();
         return newDogObj;
       } catch (err) {
