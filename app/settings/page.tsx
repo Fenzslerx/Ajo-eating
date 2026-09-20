@@ -1,356 +1,705 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Trash2 } from "lucide-react"
+import {
+  AlertTriangle,
+  Bell,
+  CheckCircle2,
+  ChevronRight,
+  Database,
+  Download,
+  Info,
+  PawPrint,
+  Plus,
+  RotateCcw,
+  ShieldCheck,
+  Trash2,
+  Upload,
+  XCircle,
+} from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
-import { MemberRow } from "@/components/member-row"
+import { PhotoPicker } from "@/components/photo-picker"
 import { useAppStore } from "@/lib/app-store"
+import {
+  DEFAULT_MEAL_CONFIG,
+  getActiveMealConfig,
+  saveActiveMealConfig,
+  resetActiveMealConfig,
+  NOTIFICATIONS_STORAGE_KEY,
+  type MealConfigItem,
+} from "@/lib/meal-utils"
+import { createClient } from "@/lib/supabase/client"
 
 export default function SettingsPage() {
   const {
     dogs,
-    schedules,
-    members,
-    profiles,
-    currentUserId,
-    currentUserEmail,
+    logs,
+    updateDog,
     addDog,
     removeDog,
-    addSchedule,
-    removeSchedule,
-    addMember,
-    removeMember,
-    setMemberRole,
-    profileFor,
+    clearAllData,
+    isOnline,
   } = useAppStore()
 
-  const [newDogName, setNewDogName] = useState("")
-  const [dogDialogOpen, setDogDialogOpen] = useState(false)
-  const [activeDogId, setActiveDogId] = useState(dogs[0]?.id ?? "")
-  const [scheduleLabel, setScheduleLabel] = useState("")
-  const [scheduleTime, setScheduleTime] = useState("")
-  const [memberEmail, setMemberEmail] = useState("")
-  const [deleteDogOpen, setDeleteDogOpen] = useState(false)
-  useEffect(() => { if (!activeDogId && dogs[0]) setActiveDogId(dogs[0].id) }, [activeDogId, dogs])
+  // 1. Profile State
+  const [selectedDogId, setSelectedDogId] = useState(dogs[0]?.id ?? "")
+  useEffect(() => {
+    if (!selectedDogId && dogs[0]) setSelectedDogId(dogs[0].id)
+  }, [selectedDogId, dogs])
 
-  function handleAddDog(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newDogName.trim()) return
-    addDog(newDogName.trim())
-    setNewDogName("")
-    setDogDialogOpen(false)
-    toast.success("เพิ่มน้องหมาแล้ว")
-  }
+  const activeDog = dogs.find((d) => d.id === selectedDogId) ?? dogs[0]
 
-  function handleAddSchedule(e: React.FormEvent) {
-    e.preventDefault()
-    if (!activeDogId || !scheduleLabel.trim() || !scheduleTime) return
-    addSchedule({ dog_id: activeDogId, label: scheduleLabel.trim(), time: scheduleTime })
-    setScheduleLabel("")
-    setScheduleTime("")
-    toast.success("เพิ่มมื้ออาหารแล้ว")
-  }
+  const [dogName, setDogName] = useState("")
+  const [dogBreed, setDogBreed] = useState("")
+  const [dogBirthdate, setDogBirthdate] = useState("")
+  const [dogPhoto, setDogPhoto] = useState<string | null>(null)
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [newDogOpen, setNewDogOpen] = useState(false)
+  const [newDogNameInput, setNewDogNameInput] = useState("")
 
-  function handleAddMember(e: React.FormEvent) {
-    e.preventDefault()
-    if (!activeDogId || !memberEmail.trim()) return
-    addMember(activeDogId, memberEmail.trim())
-    setMemberEmail("")
-    toast.success("เชิญสมาชิกแล้ว")
-  }
-
-  const activeDog = dogs.find((d) => d.id === activeDogId)
-  const activeDogSchedules = schedules.filter((s) => s.dog_id === activeDogId)
-
-  // Members list: make sure owner and current user are always displayed with their email
-  const rawMembers = members.filter((m) => m.dog_id === activeDogId)
-  const hasOwner = rawMembers.some((m) => m.role === "owner" || (activeDog && m.user_id === activeDog.owner_id))
-
-  const displayMembers = [...rawMembers]
-  if (!hasOwner && activeDog?.owner_id) {
-    displayMembers.unshift({
-      dog_id: activeDog.id,
-      user_id: activeDog.owner_id,
-      role: "owner",
-    })
-  }
-
-  const activeDogMembers = displayMembers.map((m) => {
-    const prof = profileFor(m.user_id)
-    const isCurrentUser = m.user_id === currentUserId
-    const email = prof?.email || (isCurrentUser ? currentUserEmail : "")
-    const name = prof?.name || (isCurrentUser ? (currentUserEmail ? currentUserEmail.split("@")[0] : "ฉัน") : (email ? email.split("@")[0] : "สมาชิก"))
-    return {
-      ...m,
-      name,
-      email: email || "(กำลังโหลดอีเมล...)",
+  useEffect(() => {
+    if (activeDog) {
+      setDogName(activeDog.name || "")
+      setDogBreed(activeDog.breed || "")
+      setDogBirthdate(activeDog.birthdate || "")
+      setDogPhoto(activeDog.photo || null)
     }
+  }, [activeDog])
+
+  async function handleSaveDogProfile(e: React.FormEvent) {
+    e.preventDefault()
+    if (!activeDog || !dogName.trim()) return
+    setIsSavingProfile(true)
+    try {
+      await updateDog(activeDog.id, {
+        name: dogName.trim(),
+        breed: dogBreed.trim() || null,
+        birthdate: dogBirthdate || null,
+        photo: dogPhoto,
+      })
+      toast.success("บันทึกข้อมูลน้องหมาแล้ว")
+    } catch {
+      toast.error("เกิดข้อผิดพลาดในการบันทึก")
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
+  // 2. Meal Schedule State
+  const [mealConfigs, setMealConfigs] = useState<MealConfigItem[]>(() => getActiveMealConfig())
+
+  function handleSaveMealConfigs(newConfigs: MealConfigItem[]) {
+    setMealConfigs(newConfigs)
+    saveActiveMealConfig(newConfigs)
+    toast.success("บันทึกการตั้งค่าช่วงเวลามื้ออาหารแล้ว")
+  }
+
+  function handleUpdateMealTime(index: number, startHour: number, endHour: number) {
+    const updated = [...mealConfigs]
+    updated[index] = { ...updated[index], startHour, endHour }
+    handleSaveMealConfigs(updated)
+  }
+
+  function handleAddMeal() {
+    const newKey = `meal_${Date.now()}`
+    const updated = [
+      ...mealConfigs,
+      { key: newKey, label: "มื้อพิเศษ", startHour: 14, endHour: 16 },
+    ]
+    handleSaveMealConfigs(updated)
+  }
+
+  function handleRemoveMeal(index: number) {
+    if (mealConfigs.length <= 1) {
+      toast.error("ต้องมีมื้ออาหารอย่างน้อย 1 มื้อ")
+      return
+    }
+    const updated = mealConfigs.filter((_, i) => i !== index)
+    handleSaveMealConfigs(updated)
+  }
+
+  function handleResetMealSchedule() {
+    const defaults = resetActiveMealConfig()
+    setMealConfigs(defaults)
+    toast.success("คืนค่าเริ่มต้นช่วงเวลามื้ออาหารแล้ว")
+  }
+
+  // 3. Notification Toggle State
+  const [notifyOnMissed, setNotifyOnMissed] = useState(() => {
+    if (typeof window === "undefined") return true
+    const val = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY)
+    return val !== null ? val === "true" : true
   })
 
-  const canManage = activeDog?.owner_id === currentUserId
-
-  function handleRemoveDog() {
-    if (!activeDog) return
-    const remaining = dogs.filter((d) => d.id !== activeDog.id)
-    removeDog(activeDog.id)
-    setActiveDogId(remaining[0]?.id ?? "")
-    setDeleteDogOpen(false)
-    toast.success(`ลบ${activeDog.name}แล้ว`)
+  function handleToggleNotification() {
+    const nextVal = !notifyOnMissed
+    setNotifyOnMissed(nextVal)
+    localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, String(nextVal))
+    toast.success(nextVal ? "เปิดการแจ้งเตือนแล้ว" : "ปิดการแจ้งเตือนแล้ว")
   }
 
+  // 4. Data Management: Export & Clear Data
+  function handleExportData() {
+    if (logs.length === 0) {
+      toast.error("ยังไม่มีข้อมูลบันทึกให้ Export")
+      return
+    }
+
+    const exportObject = {
+      exportDate: new Date().toISOString(),
+      dog: activeDog ? { id: activeDog.id, name: activeDog.name, breed: activeDog.breed } : null,
+      mealConfigs,
+      recordsCount: logs.length,
+      logs: logs.map((l) => ({
+        id: l.id,
+        at: l.at,
+        recordedAt: l.recordedAt,
+        mealType: l.mealType,
+        status: l.status,
+        food: l.food,
+        amount_g: l.amount_g,
+        note: l.note,
+      })),
+    }
+
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObject, null, 2))
+    const downloadAnchor = document.createElement("a")
+    downloadAnchor.setAttribute("href", dataStr)
+    downloadAnchor.setAttribute("download", `dogmeal-export-${new Date().toISOString().slice(0, 10)}.json`)
+    document.body.appendChild(downloadAnchor)
+    downloadAnchor.click()
+    downloadAnchor.remove()
+    toast.success("ดาวน์โหลดไฟล์ข้อมูล JSON แล้ว")
+  }
+
+  const [clearDataDialogOpen, setClearDataDialogOpen] = useState(false)
+  const [confirmDeleteText, setConfirmDeleteText] = useState("")
+  const [isClearing, setIsClearing] = useState(false)
+
+  async function handleConfirmClearAll() {
+    if (confirmDeleteText !== "DELETE") return
+    setIsClearing(true)
+    try {
+      await clearAllData()
+      setClearDataDialogOpen(false)
+      setConfirmDeleteText("")
+      toast.success("ล้างข้อมูลทั้งหมดเรียบร้อยแล้ว")
+    } catch {
+      toast.error("เกิดข้อผิดพลาดในการล้างข้อมูล")
+    } finally {
+      setIsClearing(false)
+    }
+  }
+
+  // 5. System Status (Supabase read-only check)
+  const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking")
+
+  useEffect(() => {
+    async function checkBackend() {
+      try {
+        const client = createClient()
+        const { error } = await client.from("dogs").select("id").limit(1)
+        if (error) {
+          setBackendStatus("disconnected")
+        } else {
+          setBackendStatus("connected")
+        }
+      } catch {
+        setBackendStatus("disconnected")
+      }
+    }
+    void checkBackend()
+  }, [])
+
   return (
-    <div className="flex flex-col gap-6 px-4 pt-4">
-      <header className="flex items-center justify-between pt-2">
+    <div className="flex flex-col gap-6 px-4 pt-4 pb-14">
+      <header className="pt-2">
         <h1 className="text-xl font-bold text-foreground">ตั้งค่า</h1>
-        <Dialog open={dogDialogOpen} onOpenChange={setDogDialogOpen}>
-          <DialogTrigger render={<Button size="sm" className="rounded-full" />}>
-            <Plus className="size-4" aria-hidden="true" />
-            เพิ่มน้องหมา
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>เพิ่มน้องหมา</DialogTitle>
-            </DialogHeader>
-            <form className="flex flex-col gap-4" onSubmit={handleAddDog}>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="new-dog-name">ชื่อน้องหมา</Label>
-                <Input
-                  id="new-dog-name"
-                  value={newDogName}
-                  onChange={(e) => setNewDogName(e.target.value)}
-                  placeholder="เช่น มะม่วง"
-                  autoFocus
-                />
-              </div>
-              <Button type="submit" className="rounded-full">
-                บันทึก
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <p className="text-sm text-muted-foreground">จัดการข้อมูลน้องหมา ช่วงเวลามื้ออาหาร และระบบ</p>
       </header>
 
-      <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="เลือกน้องหมา">
-        {dogs.map((dog) => (
-          <button
-            key={dog.id}
-            type="button"
-            role="tab"
-            aria-selected={activeDogId === dog.id}
-            onClick={() => setActiveDogId(dog.id)}
-            className={`min-h-10 shrink-0 rounded-full border px-4 text-sm font-medium transition-colors ${
-              activeDogId === dog.id
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-card text-foreground hover:bg-secondary/50"
-            }`}
+      {/* ─────────────────────────────────────────────────────────────
+          1. ข้อมูลน้องหมา (Profile)
+      ───────────────────────────────────────────────────────────── */}
+      <Card className="flex flex-col gap-4 rounded-2xl border border-border p-4 shadow-xs">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center gap-2">
+            <PawPrint className="size-5 text-primary" />
+            <h2 className="text-base font-bold text-foreground">ข้อมูลน้องหมา (Profile)</h2>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-full gap-1 text-xs"
+            onClick={() => setNewDogOpen(true)}
           >
-            {dog.name}
-          </button>
-        ))}
-      </div>
+            <Plus className="size-3.5" />
+            เพิ่มตัวใหม่
+          </Button>
+        </div>
 
-      {activeDog && (
-        <>
-          {canManage && (
-            <Dialog open={deleteDogOpen} onOpenChange={setDeleteDogOpen}>
-              <DialogTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-fit self-end rounded-full text-destructive hover:text-destructive"
-                  />
-                }
+        {/* Tab switcher if multiple dogs */}
+        {dogs.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="เลือกน้องหมา">
+            {dogs.map((dog) => (
+              <button
+                key={dog.id}
+                type="button"
+                role="tab"
+                aria-selected={selectedDogId === dog.id}
+                onClick={() => setSelectedDogId(dog.id)}
+                className={`min-h-9 shrink-0 rounded-full border px-3.5 text-xs font-semibold transition-all ${
+                  selectedDogId === dog.id
+                    ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                    : "border-border bg-card text-foreground hover:bg-secondary"
+                }`}
               >
-                <Trash2 className="size-4" aria-hidden="true" />
-                ลบ{activeDog.name}
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>ลบ{activeDog.name}?</DialogTitle>
-                </DialogHeader>
-                <p className="text-sm text-muted-foreground">
-                  ประวัติมื้ออาหาร มื้อ และสมาชิกของ{activeDog.name}จะถูกลบทั้งหมด และไม่สามารถกู้คืนได้
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1 rounded-full"
-                    onClick={() => setDeleteDogOpen(false)}
-                  >
-                    ยกเลิก
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    className="flex-1 rounded-full"
-                    onClick={handleRemoveDog}
-                  >
-                    ลบเลย
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          )}
+                🐶 {dog.name}
+              </button>
+            ))}
+          </div>
+        )}
 
-          <section className="flex flex-col gap-3">
-            <h2 className="text-sm font-semibold text-foreground">มื้ออาหารของ{activeDog.name}</h2>
-            <div className="flex flex-col gap-2">
-              {activeDogSchedules.map((schedule) => (
-                <div
-                  key={schedule.id}
-                  className="flex items-center justify-between rounded-xl border border-border bg-card p-3"
+        {activeDog ? (
+          <form className="flex flex-col gap-4" onSubmit={handleSaveDogProfile}>
+            {/* Photo Picker */}
+            <PhotoPicker
+              id="dog-profile-photo"
+              label="รูปโปรไฟล์น้องหมา"
+              value={dogPhoto}
+              onChange={setDogPhoto}
+            />
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="dog-name-input">ชื่อน้องหมา *</Label>
+                <Input
+                  id="dog-name-input"
+                  value={dogName}
+                  onChange={(e) => setDogName(e.target.value)}
+                  placeholder="เช่น มะม่วง, อาจู"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="dog-breed-input">สายพันธุ์ (ไม่บังคับ)</Label>
+                <Input
+                  id="dog-breed-input"
+                  value={dogBreed}
+                  onChange={(e) => setDogBreed(e.target.value)}
+                  placeholder="เช่น โกลเด้น, ปอมเมอเรเนียน"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="dog-birthdate-input">วันเกิด / วันรับเลี้ยง (ไม่บังคับ)</Label>
+              <Input
+                id="dog-birthdate-input"
+                type="date"
+                value={dogBirthdate}
+                onChange={(e) => setDogBirthdate(e.target.value)}
+                max={new Date().toISOString().slice(0, 10)}
+              />
+              <span className="text-[11px] text-muted-foreground">
+                ระบบจะคำนวณอายุและแสดงที่หน้า &quot;วันนี้&quot; ให้อัตโนมัติ
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              {dogs.length > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-destructive hover:text-destructive"
+                  onClick={() => {
+                    if (confirm(`คุณต้องการลบ ${activeDog.name} ใช่หรือไม่?`)) {
+                      removeDog(activeDog.id)
+                      setSelectedDogId(dogs.find((d) => d.id !== activeDog.id)?.id ?? "")
+                      toast.success(`ลบ ${activeDog.name} แล้ว`)
+                    }
+                  }}
                 >
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium text-foreground">{schedule.label}</span>
-                    <span className="text-xs text-muted-foreground">{schedule.time.slice(0, 5)} น.</span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-9 text-muted-foreground hover:text-destructive"
-                    aria-label={`ลบมื้อ${schedule.label}`}
-                    onClick={() => removeSchedule(schedule.id)}
-                  >
-                    <Trash2 className="size-4" aria-hidden="true" />
-                  </Button>
-                </div>
-              ))}
-              {activeDogSchedules.length === 0 && (
-                <p className="text-sm text-muted-foreground">ยังไม่มีมื้ออาหาร</p>
+                  <Trash2 className="size-3.5 mr-1" />
+                  ลบโปรไฟล์นี้
+                </Button>
+              )}
+              <Button
+                type="submit"
+                size="sm"
+                className="ml-auto rounded-full font-semibold"
+                disabled={isSavingProfile || !dogName.trim()}
+              >
+                {isSavingProfile ? "กำลังบันทึก..." : "บันทึกโปรไฟล์"}
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <div className="py-6 text-center text-sm text-muted-foreground">
+            ยังไม่มีน้องหมา กด &quot;เพิ่มตัวใหม่&quot; ด้านบนเพื่อเริ่มต้น
+          </div>
+        )}
+      </Card>
+
+      {/* ─────────────────────────────────────────────────────────────
+          2. ตั้งค่าช่วงเวลามื้ออาหาร (Meal Schedule)
+      ───────────────────────────────────────────────────────────── */}
+      <Card className="flex flex-col gap-4 rounded-2xl border border-border p-4 shadow-xs">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex flex-col">
+            <h2 className="text-base font-bold text-foreground">ช่วงเวลามื้ออาหาร (Meal Schedule)</h2>
+            <span className="text-xs text-muted-foreground">
+              กำหนดเวลาคำนวณมื้ออัตโนมัติ (แทนที่ค่า default เดิม)
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="rounded-full gap-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={handleResetMealSchedule}
+          >
+            <RotateCcw className="size-3.5" />
+            คืนค่าเริ่มต้น
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          {mealConfigs.map((meal, index) => (
+            <div
+              key={meal.key}
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 shadow-2xs"
+            >
+              <div className="flex items-center gap-2">
+                <Input
+                  className="h-8 w-28 text-xs font-semibold"
+                  value={meal.label}
+                  onChange={(e) => {
+                    const updated = [...mealConfigs]
+                    updated[index] = { ...updated[index], label: e.target.value }
+                    handleSaveMealConfigs(updated)
+                  }}
+                  placeholder="ชื่อมื้อ"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">เริ่ม</span>
+                <input
+                  type="time"
+                  className="rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium"
+                  value={`${String(meal.startHour).padStart(2, "0")}:00`}
+                  onChange={(e) => {
+                    const hour = parseInt(e.target.value.split(":")[0], 10) || 0
+                    handleUpdateMealTime(index, hour, meal.endHour)
+                  }}
+                />
+                <span className="text-muted-foreground">- สิ้นสุด</span>
+                <input
+                  type="time"
+                  className="rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium"
+                  value={`${String(meal.endHour).padStart(2, "0")}:00`}
+                  onChange={(e) => {
+                    const hour = parseInt(e.target.value.split(":")[0], 10) || 0
+                    handleUpdateMealTime(index, meal.startHour, hour)
+                  }}
+                />
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 text-muted-foreground hover:text-destructive"
+                  onClick={() => handleRemoveMeal(index)}
+                  title="ลบมื้อนี้"
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            </div>
+          ))}
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="rounded-xl border-dashed border-border py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+            onClick={handleAddMeal}
+          >
+            <Plus className="size-3.5 mr-1" />
+            เพิ่มช่วงเวลามื้ออาหาร
+          </Button>
+        </div>
+      </Card>
+
+      {/* ─────────────────────────────────────────────────────────────
+          3. การแจ้งเตือน (Notifications UI)
+      ───────────────────────────────────────────────────────────── */}
+      <Card className="flex flex-col gap-3 rounded-2xl border border-border p-4 shadow-xs">
+        <div className="flex items-center gap-2 border-b border-border pb-3">
+          <Bell className="size-5 text-primary" />
+          <h2 className="text-base font-bold text-foreground">การแจ้งเตือน (Notifications)</h2>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold text-foreground">เตือนเมื่อถึงเวลาแต่ยังไม่ได้บันทึก</span>
+            <span className="text-xs text-muted-foreground">
+              แจ้งเตือนเมื่อหมดช่วงเวลาของมื้อนั้น (+15 นาที grace period)
+            </span>
+          </div>
+
+          {/* Toggle Button */}
+          <button
+            type="button"
+            onClick={handleToggleNotification}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              notifyOnMissed ? "bg-primary" : "bg-muted"
+            }`}
+            role="switch"
+            aria-checked={notifyOnMissed}
+          >
+            <span
+              className={`pointer-events-none inline-block size-5 transform rounded-full bg-background shadow-lg ring-0 transition duration-200 ease-in-out ${
+                notifyOnMissed ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
+        {/* Comment for future push notification service integration */}
+        {/* TODO: Connect Web Push / ServiceWorker notification service here */}
+        <p className="text-[11px] text-muted-foreground/80 italic">
+          * รองรับการเปิด/ปิดสวิตช์ในระบบเบื้องต้น ระบบแจ้งเตือน Push Notification บนมือถือจะเชื่อมต่อในระยะถัดไป
+        </p>
+      </Card>
+
+      {/* ─────────────────────────────────────────────────────────────
+          4. การจัดการข้อมูล (Data Management)
+      ───────────────────────────────────────────────────────────── */}
+      <Card className="flex flex-col gap-3 rounded-2xl border border-border p-4 shadow-xs">
+        <div className="flex items-center gap-2 border-b border-border pb-3">
+          <Database className="size-5 text-primary" />
+          <h2 className="text-base font-bold text-foreground">การจัดการข้อมูล (Data Management)</h2>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between rounded-xl bg-secondary/30 p-3">
+            <div className="flex flex-col">
+              <span className="text-xs font-semibold text-foreground">Export ข้อมูลย้อนหลัง</span>
+              <span className="text-[11px] text-muted-foreground">ดาวน์โหลดข้อมูลทั้งหมด ({logs.length} มื้อ) เป็นไฟล์ JSON</span>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-full gap-1 text-xs"
+              onClick={handleExportData}
+            >
+              <Download className="size-3.5" />
+              ดาวน์โหลด JSON
+            </Button>
+          </div>
+
+          <div className="flex items-center justify-between rounded-xl border border-rose-200/50 bg-rose-50/30 p-3 dark:border-rose-900/30 dark:bg-rose-950/10">
+            <div className="flex flex-col">
+              <span className="text-xs font-semibold text-rose-700 dark:text-rose-400">ล้างข้อมูลทั้งหมด</span>
+              <span className="text-[11px] text-muted-foreground">ลบประวัติมื้ออาหารและบันทึกทั้งหมดอย่างถาวร</span>
+            </div>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="rounded-full gap-1 text-xs"
+              onClick={() => {
+                setConfirmDeleteText("")
+                setClearDataDialogOpen(true)
+              }}
+            >
+              <Trash2 className="size-3.5" />
+              ล้างข้อมูล
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* ─────────────────────────────────────────────────────────────
+          5. สถานะระบบ (System Status) — Read-Only
+      ───────────────────────────────────────────────────────────── */}
+      <Card className="flex flex-col gap-3 rounded-2xl border border-border p-4 shadow-xs">
+        <div className="flex items-center gap-2 border-b border-border pb-3">
+          <ShieldCheck className="size-5 text-primary" />
+          <h2 className="text-base font-bold text-foreground">สถานะระบบ (System Status)</h2>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div className="flex flex-col gap-1 rounded-xl bg-secondary/40 p-3">
+            <span className="text-muted-foreground">การเชื่อมต่อฐานข้อมูล Supabase</span>
+            <div className="flex items-center gap-1.5 pt-0.5">
+              {backendStatus === "connected" ? (
+                <>
+                  <CheckCircle2 className="size-4 text-emerald-500" />
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">เชื่อมต่อแล้ว</span>
+                </>
+              ) : backendStatus === "checking" ? (
+                <>
+                  <div className="size-3 animate-spin rounded-full border border-primary border-t-transparent" />
+                  <span className="font-semibold text-muted-foreground">กำลังตรวจสอบ...</span>
+                </>
+              ) : (
+                <>
+                  <XCircle className="size-4 text-rose-500" />
+                  <span className="font-semibold text-rose-600">ไม่ได้เชื่อมต่อ</span>
+                </>
               )}
             </div>
-            <Card className="flex flex-col gap-3 rounded-xl border-dashed p-3">
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">เลือกมื้อด่วน:</span>
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setScheduleLabel("เช้า")
-                      setScheduleTime("08:00")
-                    }}
-                    className="rounded-lg bg-secondary px-2.5 py-1 text-xs hover:bg-secondary/80"
-                  >
-                    🌅 เช้า (08:00)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setScheduleLabel("เช้า")
-                      setScheduleTime("10:00")
-                    }}
-                    className="rounded-lg bg-secondary px-2.5 py-1 text-xs hover:bg-secondary/80"
-                  >
-                    🌅 เช้า (10:00)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setScheduleLabel("เย็น")
-                      setScheduleTime("17:00")
-                    }}
-                    className="rounded-lg bg-secondary px-2.5 py-1 text-xs hover:bg-secondary/80"
-                  >
-                    🌇 เย็น (17:00)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setScheduleLabel("เย็น")
-                      setScheduleTime("19:00")
-                    }}
-                    className="rounded-lg bg-secondary px-2.5 py-1 text-xs hover:bg-secondary/80"
-                  >
-                    🌇 เย็น (19:00)
-                  </button>
-                </div>
-              </div>
-              <form className="flex flex-col gap-3" onSubmit={handleAddSchedule}>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="schedule-label-input">ชื่อมื้อ</Label>
-                    <Input
-                      id="schedule-label-input"
-                      value={scheduleLabel}
-                      onChange={(e) => setScheduleLabel(e.target.value)}
-                      placeholder="เช่น เช้า"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="schedule-time-input">เวลา</Label>
-                    <Input
-                      id="schedule-time-input"
-                      type="time"
-                      value={scheduleTime}
-                      onChange={(e) => setScheduleTime(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <Button type="submit" variant="secondary" size="sm" className="rounded-full">
-                  <Plus className="size-4" aria-hidden="true" />
-                  เพิ่มมื้ออาหาร
-                </Button>
-              </form>
-            </Card>
-          </section>
+          </div>
 
-          <section className="flex flex-col gap-3">
-            <h2 className="text-sm font-semibold text-foreground">สมาชิกที่ดูแล{activeDog.name}</h2>
-            <div className="flex flex-col gap-2">
-              {activeDogMembers.map((m) => (
-                <MemberRow
-                  key={m.user_id}
-                  name={m.name}
-                  email={m.email}
-                  role={m.role}
-                  canManage={canManage}
-                  onRoleChange={(role) => { setMemberRole(activeDogId, m.user_id, role); toast.success(role === "viewer" ? "ตั้งเป็นดูอย่างเดียวแล้ว" : "อนุญาตให้เพิ่มข้อมูลแล้ว") }}
-                  onRemove={() => removeMember(activeDogId, m.user_id)}
-                />
-              ))}
+          <div className="flex flex-col gap-1 rounded-xl bg-secondary/40 p-3">
+            <span className="text-muted-foreground">สถานะเครือข่ายอินเทอร์เน็ต</span>
+            <div className="flex items-center gap-1.5 pt-0.5">
+              {isOnline ? (
+                <>
+                  <span className="size-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="font-semibold text-foreground">ออนไลน์ (Online)</span>
+                </>
+              ) : (
+                <>
+                  <span className="size-2.5 rounded-full bg-amber-500" />
+                  <span className="font-semibold text-amber-600">ออฟไลน์ (Offline)</span>
+                </>
+              )}
             </div>
-            {canManage && (
-              <Card className="flex flex-col gap-3 rounded-xl border-dashed p-3">
-                <form className="flex gap-2" onSubmit={handleAddMember}>
-                  <div className="flex-1">
-                    <Label htmlFor="member-email-input" className="sr-only">
-                      อีเมลสมาชิก
-                    </Label>
-                    <Input
-                      id="member-email-input"
-                      type="email"
-                      value={memberEmail}
-                      onChange={(e) => setMemberEmail(e.target.value)}
-                      placeholder="อีเมลของสมาชิก"
-                    />
-                  </div>
-                  <Button type="submit" variant="secondary" className="rounded-full">
-                    เชิญ
-                  </Button>
-                </form>
-              </Card>
-            )}
-          </section>
-        </>
-      )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <Info className="size-3.5 text-muted-foreground" />
+          <span>การตั้งค่าเชื่อมต่อถูกป้องกันผ่าน environment variable ปลอดภัยต่อการใช้งาน</span>
+        </div>
+      </Card>
+
+      {/* ─────────────────────────────────────────────────────────────
+          6. เกี่ยวกับแอป (About)
+      ───────────────────────────────────────────────────────────── */}
+      <Card className="flex flex-col gap-2.5 rounded-2xl border border-border p-4 shadow-xs text-xs text-muted-foreground">
+        <div className="flex items-center justify-between border-b border-border pb-2.5">
+          <span className="font-semibold text-foreground">แอปติดตามอาหารน้องหมา (DogMeal)</span>
+          <span className="rounded-full bg-secondary px-2.5 py-0.5 font-bold text-foreground">v0.2.0</span>
+        </div>
+        <p className="leading-relaxed">
+          พัฒนาขึ้นเพื่อช่วยให้คุณพ่อคุณแม่น้องหมาสามารถดูแลบันทึกมื้ออาหาร สุขภาพ และพฤติกรรมการกินได้อย่างสะดวกและแม่นยำ
+        </p>
+        <div className="flex items-center justify-between pt-1 text-[11px]">
+          <span>รายงานปัญหา / ข้อเสนอแนะ</span>
+          <a
+            href="mailto:support@dogmeal.app"
+            className="font-medium text-primary hover:underline"
+          >
+            support@dogmeal.app
+          </a>
+        </div>
+      </Card>
+
+      {/* Modal: เพิ่มน้องหมาตัวใหม่ */}
+      <Dialog open={newDogOpen} onOpenChange={setNewDogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>เพิ่มน้องหมาตัวใหม่</DialogTitle>
+          </DialogHeader>
+          <form
+            className="flex flex-col gap-3.5"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (!newDogNameInput.trim()) return
+              addDog(newDogNameInput.trim())
+              setNewDogNameInput("")
+              setNewDogOpen(false)
+              toast.success("เพิ่มน้องหมาแล้ว")
+            }}
+          >
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="add-dog-name">ชื่อน้องหมา</Label>
+              <Input
+                id="add-dog-name"
+                value={newDogNameInput}
+                onChange={(e) => setNewDogNameInput(e.target.value)}
+                placeholder="เช่น บัวขาว, ชาเขียว"
+                autoFocus
+                required
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full"
+                onClick={() => setNewDogOpen(false)}
+              >
+                ยกเลิก
+              </Button>
+              <Button type="submit" className="rounded-full font-semibold">
+                เพิ่มน้องหมา
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: ยืนยันล้างข้อมูลทั้งหมด 2 ชั้น */}
+      <Dialog open={clearDataDialogOpen} onOpenChange={setClearDataDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-destructive flex items-center gap-2">
+              <AlertTriangle className="size-5" />
+              ยืนยันการล้างข้อมูลทั้งหมด
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 text-xs text-muted-foreground">
+            <p>
+              การกระทำนี้จะล้างประวัติการกินข้าว ข้อมูลน้องหมา และการตั้งค่าทั้งหมดออกจากระบบอย่างถาวร ไม่สามารถกู้คืนได้
+            </p>
+            <p className="font-semibold text-foreground">
+              พิมพ์คำว่า <span className="font-mono text-destructive underline font-bold">DELETE</span> เพื่อยืนยัน:
+            </p>
+            <Input
+              value={confirmDeleteText}
+              onChange={(e) => setConfirmDeleteText(e.target.value)}
+              placeholder="พิมพ์ DELETE เพื่อยืนยัน"
+              className="font-mono"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full"
+              onClick={() => setClearDataDialogOpen(false)}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-full font-semibold"
+              disabled={confirmDeleteText !== "DELETE" || isClearing}
+              onClick={handleConfirmClearAll}
+            >
+              {isClearing ? "กำลังล้างข้อมูล..." : "ยืนยันล้างข้อมูล"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

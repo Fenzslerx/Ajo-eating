@@ -2,6 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { flushQueuedLogs, queueLog } from "@/lib/offline-queue";
+import { DOG_PROFILE_STORAGE_KEY } from "@/lib/meal-utils";
 import type { Dog, DogMember, MealLog, Profile, Schedule } from "./types";
 
 type Store = {
@@ -18,8 +19,10 @@ type Store = {
   addLog: (x: Omit<MealLog, "id" | "by">) => void;
   updateLog: (id: string, x: Partial<MealLog>) => void;
   removeLog: (id: string) => void;
-  addDog: (name: string) => void;
+  addDog: (name: string, photo?: string | null, breed?: string | null, birthdate?: string | null) => void;
+  updateDog: (id: string, updates: Partial<Dog>) => Promise<void>;
   removeDog: (id: string) => void;
+  clearAllData: () => Promise<void>;
   addSchedule: (x: Omit<Schedule, "id">) => void;
   removeSchedule: (id: string) => void;
   addMember: (dogId: string, email: string) => void;
@@ -45,6 +48,17 @@ const mapLog = (row: any, photo: string | null): MealLog => ({
   photo_before: null,
   photo_after: photo,
 });
+
+/** Read custom profile attributes from local storage fallback */
+function getLocalDogProfiles(): Record<string, { breed?: string | null; birthdate?: string | null; photo?: string | null; name?: string }> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(DOG_PROFILE_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
 
 // ─── provider ─────────────────────────────────────────────────────────────────
 
@@ -76,17 +90,41 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setUserEmail(user.email || "");
 
       const [d, sc, l] = await Promise.all([
-        s.from("dogs").select("id,name,photo,owner_id"),
+        s.from("dogs").select("*"),
         s.from("schedules").select("id,dog_id,label,time"),
         s.from("logs").select("*").order("at", { ascending: false }),
       ]);
 
-      const dogRows = (d.data ?? []) as Dog[];
+      const localProfiles = getLocalDogProfiles();
+      const rawDogs = (d.data ?? []) as any[];
+
+      // Generate signed URLs for dog photos
+      const dogSigned = await Promise.all(
+        rawDogs.map((dog) => {
+          if (dog.photo && !dog.photo.startsWith("http") && !dog.photo.startsWith("data:")) {
+            return signedUrl(s, dog.photo);
+          }
+          return Promise.resolve(dog.photo);
+        })
+      );
+
+      const dogRows: Dog[] = rawDogs.map((dog, idx) => {
+        const stored = localProfiles[dog.id] || {};
+        return {
+          id: dog.id,
+          name: stored.name || dog.name,
+          photo: stored.photo || dogSigned[idx] || null,
+          owner_id: dog.owner_id,
+          breed: stored.breed ?? dog.breed ?? null,
+          birthdate: stored.birthdate ?? dog.birthdate ?? null,
+        };
+      });
+
       setDogs(dogRows);
       setSchedules(sc.data ?? []);
       const logRows = l.data ?? [];
 
-      // Generate signed URLs in parallel
+      // Generate signed URLs in parallel for meal logs
       const signed = await Promise.all(
         logRows.map((row: any) => signedUrl(s, row.photo ?? null))
       );
@@ -147,6 +185,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
     setOnline(navigator.onLine);
 
     const up = () => {
@@ -188,7 +229,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         };
 
         const preview = x.photo_after;
-        if (preview?.startsWith("blob:")) {
+        if (preview?.startsWith("blob:") || preview?.startsWith("data:")) {
           const blob = await fetch(preview).then((r) => r.blob());
           const path = `${x.dog_id}/${crypto.randomUUID()}.jpg`;
           const { error } = await s.storage
@@ -239,8 +280,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             prev.map((l) => (l.id === id ? { ...l, ...payload, photo_after: x.photo_after ?? l.photo_after } : l))
           );
 
-          if (x.photo_after?.startsWith("blob:") && x.dog_id) {
-            // Only upload if we have a valid dog_id (required by RLS policy)
+          if ((x.photo_after?.startsWith("blob:") || x.photo_after?.startsWith("data:")) && x.dog_id) {
             const blob = await fetch(x.photo_after).then((r) => r.blob());
             const path = `${x.dog_id}/${crypto.randomUUID()}.jpg`;
             const { error } = await s.storage
@@ -282,19 +322,83 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const addDog = useCallback(
-    (name: string) => {
+    (name: string, photo?: string | null, breed?: string | null, birthdate?: string | null) => {
       void (async () => {
         try {
           const s = createClient();
           const { data } = await s.auth.getUser();
           if (!data.user) return;
-          const { error } = await s.from("dogs").insert({ name, owner_id: data.user.id });
+          const { data: inserted, error } = await s
+            .from("dogs")
+            .insert({ name, photo: photo || null, owner_id: data.user.id })
+            .select()
+            .single();
+
           if (error) console.error("addDog error:", error.message);
+
+          if (inserted?.id) {
+            // Save extra attributes to local storage record
+            const local = getLocalDogProfiles();
+            local[inserted.id] = { name, breed, birthdate, photo };
+            localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
+          }
+
           await load();
         } catch (err) {
           console.error("addDog exception:", err);
         }
       })();
+    },
+    [load]
+  );
+
+  const updateDog = useCallback(
+    async (id: string, updates: Partial<Dog>) => {
+      try {
+        const s = createClient();
+        const payload: any = {};
+        if (updates.name !== undefined) payload.name = updates.name;
+
+        // Upload photo if new blob
+        if (updates.photo?.startsWith("blob:") || updates.photo?.startsWith("data:")) {
+          const blob = await fetch(updates.photo).then((r) => r.blob());
+          const path = `avatars/${id}-${crypto.randomUUID()}.jpg`;
+          const { error: uploadErr } = await s.storage
+            .from("dog-photos")
+            .upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: true });
+          if (!uploadErr) {
+            payload.photo = path;
+          }
+        } else if (updates.photo === null) {
+          payload.photo = null;
+        }
+
+        // 1. Update in Supabase
+        if (Object.keys(payload).length > 0) {
+          const { error } = await s.from("dogs").update(payload).eq("id", id);
+          if (error) console.error("updateDog Supabase error:", error.message);
+        }
+
+        // 2. Update local profile storage (dogProfile)
+        const local = getLocalDogProfiles();
+        local[id] = {
+          ...local[id],
+          name: updates.name ?? local[id]?.name,
+          breed: updates.breed !== undefined ? updates.breed : local[id]?.breed,
+          birthdate: updates.birthdate !== undefined ? updates.birthdate : local[id]?.birthdate,
+          photo: updates.photo !== undefined ? updates.photo : local[id]?.photo,
+        };
+        localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
+
+        // Optimistic UI state update immediately
+        setDogs((prev) =>
+          prev.map((d) => (d.id === id ? { ...d, ...updates } : d))
+        );
+
+        await load();
+      } catch (err) {
+        console.error("updateDog exception:", err);
+      }
     },
     [load]
   );
@@ -305,6 +409,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         try {
           const { error } = await createClient().from("dogs").delete().eq("id", id);
           if (error) console.error("removeDog error:", error.message);
+
+          const local = getLocalDogProfiles();
+          delete local[id];
+          localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
+
           await load();
         } catch (err) {
           console.error("removeDog exception:", err);
@@ -313,6 +422,22 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     },
     [load]
   );
+
+  const clearAllData = useCallback(async () => {
+    try {
+      const s = createClient();
+      await Promise.all([
+        s.from("logs").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+        s.from("schedules").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+        s.from("dogs").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+      ]);
+      localStorage.removeItem(DOG_PROFILE_STORAGE_KEY);
+      localStorage.removeItem("custom_meal_config");
+      await load();
+    } catch (err) {
+      console.error("clearAllData exception:", err);
+    }
+  }, [load]);
 
   const addSchedule = useCallback(
     (x: Omit<Schedule, "id">) => {
@@ -350,7 +475,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         try {
           const { error } = await createClient().rpc("invite_dog_member", {
             target_dog_id: dogId,
-            member_email: email,
+            target_email: email,
           });
           if (error) console.error("addMember error:", error.message);
           await load();
@@ -366,11 +491,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     (dogId: string, uid: string) => {
       void (async () => {
         try {
-          const { error } = await createClient()
-            .from("dog_members")
-            .delete()
-            .eq("dog_id", dogId)
-            .eq("user_id", uid);
+          const { error } = await createClient().rpc("remove_dog_member", {
+            target_dog_id: dogId,
+            target_user_id: uid,
+          });
           if (error) console.error("removeMember error:", error.message);
           await load();
         } catch (err) {
@@ -418,7 +542,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       updateLog,
       removeLog,
       addDog,
+      updateDog,
       removeDog,
+      clearAllData,
       addSchedule,
       removeSchedule,
       addMember,
@@ -429,7 +555,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     [
       userId, userEmail, profiles, dogs, schedules, logs, members,
       pending, online, isLoading,
-      addLog, updateLog, removeLog, addDog, removeDog,
+      addLog, updateLog, removeLog, addDog, updateDog, removeDog, clearAllData,
       addSchedule, removeSchedule, addMember, removeMember, setMemberRole,
     ]
   );

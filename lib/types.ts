@@ -3,6 +3,8 @@ export type Dog = {
   name: string
   photo: string | null
   owner_id: string
+  breed?: string | null
+  birthdate?: string | null
 }
 
 export type Schedule = {
@@ -12,7 +14,7 @@ export type Schedule = {
   time: string
 }
 
-export type MealType = "morning" | "noon" | "evening"
+export type MealType = "morning" | "noon" | "evening" | string
 
 export type MealStatus = "finished" | "partial" | "none"
 export type LogStatus = MealStatus

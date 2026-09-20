@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import {
   TrendingUp,
@@ -16,7 +16,7 @@ import { Card } from "@/components/ui/card"
 import { DateFilter, type DateRangeOption } from "@/components/date-filter"
 import { useAppStore } from "@/lib/app-store"
 import {
-  MEAL_CONFIG,
+  getActiveMealConfig,
   getBangkokParts,
   getLogMealKey,
   isSameBangkokDay,
@@ -48,6 +48,15 @@ function formatISODate(d: Date): string {
 export default function StatsPage() {
   const { dogs, logs } = useAppStore()
   const [trendRange, setTrendRange] = useState<DateRangeOption>("7d")
+  const [activeMealConfigs, setActiveMealConfigs] = useState(() => getActiveMealConfig())
+
+  useEffect(() => {
+    const handleConfigChange = () => {
+      setActiveMealConfigs(getActiveMealConfig())
+    }
+    window.addEventListener("meal-config-changed", handleConfigChange)
+    return () => window.removeEventListener("meal-config-changed", handleConfigChange)
+  }, [])
 
   // Heatmap Calendar state: month offset
   const [calendarDate, setCalendarDate] = useState(() => {
@@ -113,9 +122,9 @@ export default function StatsPage() {
       d.setDate(d.getDate() - i)
       const key = formatISODate(d)
       const dLogs = logsByDay.get(key) || []
-      // If day has less than MEAL_CONFIG.length meals recorded
-      const uniqueMealsRecorded = new Set(dLogs.map((l) => getLogMealKey(l))).size
-      if (uniqueMealsRecorded < MEAL_CONFIG.length) {
+      // If day has less than activeMealConfigs.length meals recorded
+      const uniqueMealsRecorded = new Set(dLogs.map((l) => getLogMealKey(l, activeMealConfigs))).size
+      if (uniqueMealsRecorded < activeMealConfigs.length) {
         const p = getBangkokParts(d)
         latestIncompleteDateStr = `${p.day} ${THAI_MONTHS[p.month - 1].slice(0, 3)}`
         break
@@ -129,7 +138,7 @@ export default function StatsPage() {
       noneCountLast7Days,
       latestIncompleteDateStr,
     }
-  }, [logs, logsByDay])
+  }, [logs, logsByDay, activeMealConfigs])
 
   // ─────────────────────────────────────────────────────────────
   // 2. Trend (7 Days / 30 Days)
@@ -173,8 +182,8 @@ export default function StatsPage() {
   // 3. Comparison by Meal Type
   // ─────────────────────────────────────────────────────────────
   const mealTypeStats = useMemo(() => {
-    return MEAL_CONFIG.map((config) => {
-      const mealLogs = logs.filter((l) => getLogMealKey(l) === config.key)
+    return activeMealConfigs.map((config) => {
+      const mealLogs = logs.filter((l) => getLogMealKey(l, activeMealConfigs) === config.key)
       const total = mealLogs.length
       const finished = mealLogs.filter((l) => l.status === "finished").length
       const partial = mealLogs.filter((l) => l.status === "partial").length
@@ -191,7 +200,7 @@ export default function StatsPage() {
         rate,
       }
     })
-  }, [logs])
+  }, [logs, activeMealConfigs])
 
   // ─────────────────────────────────────────────────────────────
   // 4. Heatmap Calendar (Month View)

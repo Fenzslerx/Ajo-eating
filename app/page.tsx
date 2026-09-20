@@ -11,7 +11,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useAppStore } from "@/lib/app-store"
 import {
-  MEAL_CONFIG,
+  getActiveMealConfig,
   getMealStatus,
   getLogMealKey,
   isSameBangkokDay,
@@ -39,6 +39,15 @@ function TodayPageContent() {
     return y
   })
   const [calendarOpen, setCalendarOpen] = useState(false)
+  const [activeMealConfigs, setActiveMealConfigs] = useState(() => getActiveMealConfig())
+
+  useEffect(() => {
+    const handleConfigChange = () => {
+      setActiveMealConfigs(getActiveMealConfig())
+    }
+    window.addEventListener("meal-config-changed", handleConfigChange)
+    return () => window.removeEventListener("meal-config-changed", handleConfigChange)
+  }, [])
 
   // Listen to ?date=YYYY-MM-DD query param from stats calendar
   useEffect(() => {
@@ -192,12 +201,14 @@ function TodayPageContent() {
               name={dog.name}
               photo={dog.photo}
               latestLog={latestLog}
+              breed={dog.breed}
+              birthdate={dog.birthdate}
             />
 
             <div className="flex flex-col gap-3">
-              {MEAL_CONFIG.map((mealConfig) => {
-                const log = dogLogsDay.find((l) => getLogMealKey(l) === mealConfig.key) ?? null
-                const displayStatus = getMealStatus(mealConfig.key, dogLogsDay, activeDate)
+              {activeMealConfigs.map((mealConfig) => {
+                const log = dogLogsDay.find((l) => getLogMealKey(l, activeMealConfigs) === mealConfig.key) ?? null
+                const displayStatus = getMealStatus(mealConfig.key, dogLogsDay, activeDate, undefined, activeMealConfigs)
 
                 return (
                   <MealCard

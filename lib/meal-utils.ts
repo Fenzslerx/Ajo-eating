@@ -1,28 +1,78 @@
-export type MealKey = "morning" | "noon" | "evening"
+export type MealKey = "morning" | "noon" | "evening" | string
 
 export interface MealConfigItem {
-  key: MealKey
+  key: string
   label: string
   startHour: number
   endHour: number
 }
 
 /**
- * Global configuration for meal periods.
+ * Default global configuration for meal periods.
  * - morning: 05:00 - 12:00
  * - noon: 12:00 - 17:00
  * - evening: 17:00 - 21:00
  */
-export const MEAL_CONFIG: MealConfigItem[] = [
+export const DEFAULT_MEAL_CONFIG: MealConfigItem[] = [
   { key: "morning", label: "เช้า", startHour: 5, endHour: 12 },
   { key: "noon", label: "เที่ยง", startHour: 12, endHour: 17 },
   { key: "evening", label: "เย็น", startHour: 17, endHour: 21 },
 ]
 
+export const MEAL_CONFIG_STORAGE_KEY = "custom_meal_config"
+export const NOTIFICATIONS_STORAGE_KEY = "dogmeal_notifications_enabled"
+export const DOG_PROFILE_STORAGE_KEY = "dogProfile"
+
 /** Grace period in minutes after endHour before marking as "missed" */
 export const GRACE_MINUTES = 15
 
 export type MealDisplayStatus = "recorded" | "missed" | "pending"
+
+/**
+ * Get active meal configuration from localStorage (or fallback to DEFAULT_MEAL_CONFIG)
+ */
+export function getActiveMealConfig(): MealConfigItem[] {
+  if (typeof window === "undefined") {
+    return DEFAULT_MEAL_CONFIG
+  }
+  try {
+    const raw = localStorage.getItem(MEAL_CONFIG_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed
+      }
+    }
+  } catch (e) {
+    console.error("Failed to parse custom meal config:", e)
+  }
+  return DEFAULT_MEAL_CONFIG
+}
+
+/**
+ * Save active meal config to localStorage and dispatch custom event for instant re-render across components
+ */
+export function saveActiveMealConfig(config: MealConfigItem[]): void {
+  if (typeof window === "undefined") return
+  localStorage.setItem(MEAL_CONFIG_STORAGE_KEY, JSON.stringify(config))
+  window.dispatchEvent(new Event("meal-config-changed"))
+}
+
+/**
+ * Reset active meal config back to default
+ */
+export function resetActiveMealConfig(): MealConfigItem[] {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(MEAL_CONFIG_STORAGE_KEY)
+    window.dispatchEvent(new Event("meal-config-changed"))
+  }
+  return DEFAULT_MEAL_CONFIG
+}
+
+/**
+ * For backwards compatibility
+ */
+export const MEAL_CONFIG = DEFAULT_MEAL_CONFIG
 
 /**
  * Get date components in Asia/Bangkok timezone.
@@ -69,11 +119,16 @@ export function isSameBangkokDay(d1: Date | string, d2: Date | string): boolean 
 
 /**
  * Calculates the meal type (key) based on time in Asia/Bangkok timezone.
- * Returns null or "off-hours" if outside all configured ranges (e.g. 02:00 or 22:00).
+ * Uses customConfig if passed, or reads from storage.
+ * Returns null if outside all configured ranges (off-hours).
  */
-export function getMealTypeFromTime(date: Date = new Date()): MealKey | null {
+export function getMealTypeFromTime(
+  date: Date = new Date(),
+  customConfig?: MealConfigItem[]
+): string | null {
+  const configList = customConfig ?? getActiveMealConfig()
   const { hour } = getBangkokParts(date)
-  for (const config of MEAL_CONFIG) {
+  for (const config of configList) {
     if (hour >= config.startHour && hour < config.endHour) {
       return config.key
     }
@@ -83,22 +138,28 @@ export function getMealTypeFromTime(date: Date = new Date()): MealKey | null {
 
 /**
  * Resolves meal key when saving a record, handling off-hours edge case:
- * If recording between 21:00 and 05:00 (off-hours), we fallback to the closest meal:
- * - 21:00 - 23:59: late night recording fallback to "evening" (มื้อเย็นที่เพิ่งผ่านไป)
- * - 00:00 - 04:59: early dawn recording fallback to "morning" (เตรียมมื้อเช้าตรู่)
+ * If recording between off-hours, fallback to closest meal.
  */
-export function resolveMealKeyForRecord(date: Date = new Date()): MealKey {
-  const calculated = getMealTypeFromTime(date)
+export function resolveMealKeyForRecord(
+  date: Date = new Date(),
+  customConfig?: MealConfigItem[]
+): string {
+  const configList = customConfig ?? getActiveMealConfig()
+  if (configList.length === 0) return "morning"
+
+  const calculated = getMealTypeFromTime(date, configList)
   if (calculated) {
     return calculated
   }
+
   const { hour } = getBangkokParts(date)
-  if (hour < 5) {
-    // Early dawn before 5:00 -> prepare for morning
-    return "morning"
+  const firstMeal = configList[0]
+  const lastMeal = configList[configList.length - 1]
+
+  if (hour < firstMeal.startHour) {
+    return firstMeal.key
   }
-  // Late night after 21:00 -> fallback to evening
-  return "evening"
+  return lastMeal.key
 }
 
 /**
@@ -110,19 +171,26 @@ export function formatRecordedTime(dateOrIso: Date | string = new Date()): strin
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
 }
 
-export function getMealConfig(mealKey: MealKey): MealConfigItem {
-  const found = MEAL_CONFIG.find((m) => m.key === mealKey)
-  return found ?? MEAL_CONFIG[0]
+export function getMealConfig(mealKey: string, customConfig?: MealConfigItem[]): MealConfigItem {
+  const configList = customConfig ?? getActiveMealConfig()
+  const found = configList.find((m) => m.key === mealKey)
+  return (
+    found ??
+    configList[0] ?? { key: mealKey, label: mealKey, startHour: 8, endHour: 12 }
+  )
 }
 
 /**
  * Helper to determine a log's meal key (either stored in mealType or derived from log.at timestamp)
  */
-export function getLogMealKey(log: { at: string; mealType?: string | null }): MealKey {
-  if (log.mealType === "morning" || log.mealType === "noon" || log.mealType === "evening") {
+export function getLogMealKey(
+  log: { at: string; mealType?: string | null },
+  customConfig?: MealConfigItem[]
+): string {
+  if (log.mealType) {
     return log.mealType
   }
-  return resolveMealKeyForRecord(new Date(log.at))
+  return resolveMealKeyForRecord(new Date(log.at), customConfig)
 }
 
 /**
@@ -131,17 +199,16 @@ export function getLogMealKey(log: { at: string; mealType?: string | null }): Me
  * - "recorded": A record for this mealKey exists in targetDay logs
  * - "missed": No record AND current time is past (meal.endHour + GRACE_MINUTES)
  * - "pending": No record AND current time is before (meal.endHour + GRACE_MINUTES)
- *
- * Automatically resets status at midnight for new calendar day.
  */
 export function getMealStatus(
-  mealKey: MealKey,
+  mealKey: string,
   dayLogs: Array<{ at: string; mealType?: string | null }>,
   targetDate: Date,
-  now: Date = new Date()
+  now: Date = new Date(),
+  customConfig?: MealConfigItem[]
 ): MealDisplayStatus {
   // 1. Check if recorded
-  const hasRecord = dayLogs.some((l) => getLogMealKey(l) === mealKey)
+  const hasRecord = dayLogs.some((l) => getLogMealKey(l, customConfig) === mealKey)
   if (hasRecord) {
     return "recorded"
   }
@@ -163,7 +230,7 @@ export function getMealStatus(
   }
 
   // Same day (Today): compare current minutes with (endHour * 60 + GRACE_MINUTES)
-  const config = getMealConfig(mealKey)
+  const config = getMealConfig(mealKey, customConfig)
   const currentMinutes = nowParts.hour * 60 + nowParts.minute
   const cutoffMinutes = config.endHour * 60 + GRACE_MINUTES
 
