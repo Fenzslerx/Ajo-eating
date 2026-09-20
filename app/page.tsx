@@ -44,6 +44,7 @@ export default function TodayPage() {
       amount_g: null,
       food: null,
       note: null,
+      photo_before: null,
       photo_after: null,
     })
     toast.success(isOnline ? "บันทึกแล้ว" : "บันทึกไว้แล้ว จะส่งอัตโนมัติเมื่อออนไลน์")
