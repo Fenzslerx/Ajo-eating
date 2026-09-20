@@ -1,23 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import { CalendarIcon, ChevronLeft, ChevronRight, PawPrint, Plus, Trash2 } from "lucide-react"
+import { CalendarIcon, ChevronLeft, ChevronRight, PawPrint, Plus } from "lucide-react"
 import Link from "next/link"
-import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { DogHeader } from "@/components/dog-header"
 import { MealCard } from "@/components/meal-card"
-import { MealLogForm, type MealLogFormValues } from "@/components/meal-log-form"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useAppStore } from "@/lib/app-store"
-import type { MealLog, MealStatus } from "@/lib/types"
 
 function isSameDate(a: string | Date, b: string | Date) {
   const da = typeof a === "string" ? new Date(a) : a
@@ -39,9 +30,7 @@ function formatThaiDate(date: Date) {
 }
 
 export default function TodayPage() {
-  const { dogs, schedules, logs, addLog, updateLog, removeLog, isOnline, isLoading } = useAppStore()
-  const [editingLog, setEditingLog] = useState<MealLog | null>(null)
-  const [isNewLogOpen, setIsNewLogOpen] = useState(false)
+  const { dogs, schedules, logs, isLoading } = useAppStore()
   
   // View mode: "today" | "history"
   const [viewMode, setViewMode] = useState<"today" | "history">("today")
@@ -55,79 +44,6 @@ export default function TodayPage() {
 
   const activeDate = viewMode === "today" ? new Date() : historyDate
   const selectedLogs = logs.filter((l) => isSameDate(l.at, activeDate))
-
-  function handleStatusChange(
-    dogId: string,
-    scheduleId: string,
-    status: MealStatus,
-    existingLog: MealLog | null
-  ) {
-    if (existingLog) {
-      updateLog(existingLog.id, { status })
-      toast.success("อัปเดตสถานะแล้ว")
-    } else {
-      addLog({
-        dog_id: dogId,
-        schedule_id: scheduleId,
-        at: new Date().toISOString(),
-        status,
-        amount_g: null,
-        food: null,
-        note: null,
-        photo_before: null,
-        photo_after: null,
-      })
-      toast.success(isOnline ? "บันทึกแล้ว" : "บันทึกไว้แล้ว จะส่งอัตโนมัติเมื่อออนไลน์")
-    }
-  }
-
-  function handlePhotoChange(
-    dogId: string,
-    scheduleId: string,
-    photoUrl: string | null,
-    existingLog: MealLog | null
-  ) {
-    if (existingLog) {
-      updateLog(existingLog.id, { dog_id: dogId, photo_after: photoUrl })
-      toast.success(photoUrl ? "กำลังอัปโหลดรูปภาพ..." : "ลบรูปแล้ว")
-    } else if (photoUrl) {
-      addLog({
-        dog_id: dogId,
-        schedule_id: scheduleId,
-        at: new Date().toISOString(),
-        status: "finished",
-        amount_g: null,
-        food: null,
-        note: null,
-        photo_before: null,
-        photo_after: photoUrl,
-      })
-      toast.success("บันทึกรูปภาพแล้ว")
-    }
-  }
-
-  function handleUpdateLog(values: MealLogFormValues) {
-    if (!editingLog) return
-    updateLog(editingLog.id, {
-      dog_id: values.dogId,
-      schedule_id: values.scheduleId,
-      status: values.status,
-      amount_g: values.amountG ? Number(values.amountG) : null,
-      food: values.food.trim() || null,
-      note: values.note.trim() || null,
-      photo_after: values.photoAfter,
-      at: values.at,
-    })
-    setEditingLog(null)
-    toast.success("แก้ไขแล้ว")
-  }
-
-  function handleDeleteLog() {
-    if (!editingLog) return
-    removeLog(editingLog.id)
-    setEditingLog(null)
-    toast.success("ลบมื้ออาหารแล้ว")
-  }
 
   if (isLoading) {
     return (
@@ -161,14 +77,13 @@ export default function TodayPage() {
             {viewMode === "today" ? "วันนี้" : "ข้อมูลย้อนหลัง"}
           </h1>
         </div>
-        <Button
-          onClick={() => setIsNewLogOpen(true)}
-          size="sm"
-          className="rounded-full gap-1.5 shadow-sm font-semibold"
+        <Link
+          href="/log"
+          className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
         >
           <Plus className="size-4" />
-          บันทึกมื้ออาหาร
-        </Button>
+          ไปหน้าบันทึก
+        </Link>
       </header>
 
       {/* สลับดูวันนี้ กับ ดูข้อมูลย้อนหลัง */}
@@ -293,9 +208,6 @@ export default function TodayPage() {
                       key={schedule.id}
                       schedule={schedule}
                       log={log}
-                      onStatusChange={(status) => handleStatusChange(dog.id, schedule.id, status, log)}
-                      onPhotoChange={(photoUrl) => handlePhotoChange(dog.id, schedule.id, photoUrl, log)}
-                      onOpenDetail={() => log && setEditingLog(log)}
                     />
                   )
                 })}
@@ -304,73 +216,6 @@ export default function TodayPage() {
           </section>
         )
       })}
-
-      {/* Dialog: บันทึกมื้ออาหารใหม่ */}
-      <Dialog open={isNewLogOpen} onOpenChange={setIsNewLogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>บันทึกมื้ออาหาร</DialogTitle>
-          </DialogHeader>
-          <MealLogForm
-            dogs={dogs}
-            schedules={schedules}
-            submitLabel="บันทึกมื้ออาหาร"
-            onSubmit={(values) => {
-              addLog({
-                dog_id: values.dogId,
-                schedule_id: values.scheduleId,
-                at: values.at,
-                status: values.status,
-                amount_g: values.amountG ? Number(values.amountG) : null,
-                food: values.food || null,
-                note: values.note || null,
-                photo_before: null,
-                photo_after: values.photoAfter,
-              })
-              setIsNewLogOpen(false)
-              toast.success(isOnline ? "บันทึกมื้ออาหารสำเร็จ" : "บันทึกไว้แล้ว จะซิงค์เมื่อออนไลน์")
-            }}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog: แก้ไขมื้ออาหาร */}
-      <Dialog open={!!editingLog} onOpenChange={(open) => !open && setEditingLog(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>แก้ไขมื้ออาหาร</DialogTitle>
-          </DialogHeader>
-          {editingLog && (
-            <>
-              <MealLogForm
-                dogs={dogs}
-                schedules={schedules}
-                submitLabel="บันทึกการแก้ไข"
-                initialValues={{
-                  dogId: editingLog.dog_id,
-                  scheduleId: editingLog.schedule_id,
-                  status: editingLog.status,
-                  amountG: editingLog.amount_g?.toString() ?? "",
-                  food: editingLog.food ?? "",
-                  note: editingLog.note ?? "",
-                  photoAfter: editingLog.photo_after,
-                  at: editingLog.at,
-                }}
-                onSubmit={handleUpdateLog}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-12 rounded-full text-destructive hover:text-destructive"
-                onClick={handleDeleteLog}
-              >
-                <Trash2 className="size-4" aria-hidden="true" />
-                ลบมื้ออาหารนี้
-              </Button>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
