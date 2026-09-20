@@ -69,6 +69,7 @@ export default function SettingsPage() {
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [newDogOpen, setNewDogOpen] = useState(false)
   const [newDogNameInput, setNewDogNameInput] = useState("")
+  const [isAddingDog, setIsAddingDog] = useState(false)
 
   useEffect(() => {
     if (activeDog) {
@@ -646,13 +647,25 @@ export default function SettingsPage() {
           </DialogHeader>
           <form
             className="flex flex-col gap-3.5"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault()
-              if (!newDogNameInput.trim()) return
-              addDog(newDogNameInput.trim())
-              setNewDogNameInput("")
-              setNewDogOpen(false)
-              toast.success("เพิ่มน้องหมาแล้ว")
+              const nameToCreate = newDogNameInput.trim()
+              if (!nameToCreate || isAddingDog) return
+              setIsAddingDog(true)
+              try {
+                const created = await addDog(nameToCreate)
+                if (created?.id) {
+                  setSelectedDogId(created.id)
+                }
+                setNewDogNameInput("")
+                setNewDogOpen(false)
+                toast.success(`เพิ่มน้องหมา "${nameToCreate}" แล้ว`)
+              } catch (err) {
+                console.error("Error adding dog:", err)
+                toast.error("เกิดข้อผิดพลาดในการเพิ่มน้องหมา")
+              } finally {
+                setIsAddingDog(false)
+              }
             }}
           >
             <div className="flex flex-col gap-1.5">
@@ -664,6 +677,7 @@ export default function SettingsPage() {
                 placeholder="เช่น บัวขาว, ชาเขียว"
                 autoFocus
                 required
+                disabled={isAddingDog}
               />
             </div>
             <div className="flex justify-end gap-2 pt-2">
@@ -671,12 +685,13 @@ export default function SettingsPage() {
                 type="button"
                 variant="outline"
                 className="rounded-full"
+                disabled={isAddingDog}
                 onClick={() => setNewDogOpen(false)}
               >
                 ยกเลิก
               </Button>
-              <Button type="submit" className="rounded-full font-semibold">
-                เพิ่มน้องหมา
+              <Button type="submit" className="rounded-full font-semibold" disabled={isAddingDog}>
+                {isAddingDog ? "กำลังเพิ่ม..." : "เพิ่มน้องหมา"}
               </Button>
             </div>
           </form>

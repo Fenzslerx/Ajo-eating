@@ -20,10 +20,10 @@ type Store = {
   signOut: () => Promise<void>;
   addLog: (x: Omit<MealLog, "id" | "by">) => void;
   updateLog: (id: string, x: Partial<MealLog>) => void;
-  removeLog: (id: string) => void;
-  addDog: (name: string, photo?: string | null, breed?: string | null, birthdate?: string | null) => void;
+  removeLog: (id: string) => Promise<void>;
+  addDog: (name: string, photo?: string | null, breed?: string | null, birthdate?: string | null) => Promise<Dog | null>;
   updateDog: (id: string, updates: Partial<Dog>) => Promise<void>;
-  removeDog: (id: string) => void;
+  removeDog: (id: string) => Promise<void>;
   clearAllData: () => Promise<void>;
   addSchedule: (x: Omit<Schedule, "id">) => void;
   removeSchedule: (id: string) => void;
@@ -105,6 +105,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
       const localProfiles = getLocalDogProfiles();
       const rawDogs = (d.data ?? []) as any[];
+      console.log("[getDogProfile/load]", {
+        user: user.id,
+        rawDogsCount: rawDogs.length,
+        rawDogs,
+        localProfiles,
+        dogsError: d.error?.message,
+      });
 
       // Generate signed URLs for dog photos
       const dogSigned = await Promise.all(
@@ -228,15 +235,22 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     addEventListener("online", up);
     addEventListener("offline", down);
 
+    const onProfileChanged = () => {
+      debouncedLoad();
+    };
+    addEventListener("dog-profile-changed", onProfileChanged);
+
     const s = createClient();
     const ch = s
       .channel("dogmeal-ui")
       .on("postgres_changes", { event: "*", schema: "public", table: "logs" }, debouncedLoad)
+      .on("postgres_changes", { event: "*", schema: "public", table: "dogs" }, debouncedLoad)
       .subscribe();
 
     return () => {
       removeEventListener("online", up);
       removeEventListener("offline", down);
+      removeEventListener("dog-profile-changed", onProfileChanged);
       if (reloadTimer.current) clearTimeout(reloadTimer.current);
       s.removeChannel(ch);
     };
@@ -350,46 +364,77 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const removeLog = useCallback(
-    (id: string) => {
-      void (async () => {
-        try {
-          const { error } = await createClient().from("logs").delete().eq("id", id);
-          if (error) console.error("removeLog error:", error.message);
-          await load();
-        } catch (err) {
-          console.error("removeLog exception:", err);
-        }
-      })();
+    async (id: string) => {
+      try {
+        const { error } = await createClient().from("logs").delete().eq("id", id);
+        if (error) console.error("removeLog error:", error.message);
+        await load();
+      } catch (err) {
+        console.error("removeLog exception:", err);
+      }
     },
     [load]
   );
 
   const addDog = useCallback(
-    (name: string, photo?: string | null, breed?: string | null, birthdate?: string | null) => {
-      void (async () => {
-        try {
-          const s = createClient();
-          const { data: { session } } = await s.auth.getSession();
-          if (!session?.user) return;
-          const { data: inserted, error } = await s
-            .from("dogs")
-            .insert({ name, photo: photo || null, owner_id: session.user.id })
-            .select()
-            .single();
-
-          if (error) console.error("addDog error:", error.message);
-
-          if (inserted?.id) {
-            const local = getLocalDogProfiles();
-            local[inserted.id] = { name, breed, birthdate, photo };
-            localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
-          }
-
-          await load();
-        } catch (err) {
-          console.error("addDog exception:", err);
+    async (name: string, photo?: string | null, breed?: string | null, birthdate?: string | null): Promise<Dog | null> => {
+      try {
+        const s = createClient();
+        const { data: { session } } = await s.auth.getSession();
+        if (!session?.user) {
+          console.warn("[saveDogProfile/addDog] No active session found");
+          return null;
         }
-      })();
+
+        const newDogId = crypto.randomUUID();
+        console.log("[saveDogProfile/addDog] Creating dog with id:", newDogId, {
+          name,
+          owner_id: session.user.id,
+        });
+
+        // 1. Insert into Supabase dogs table with explicit ID
+        const { data: insertedList, error } = await s
+          .from("dogs")
+          .insert({
+            id: newDogId,
+            name,
+            photo: photo || null,
+            owner_id: session.user.id,
+          })
+          .select();
+
+        if (error) {
+          console.error("[saveDogProfile/addDog] Supabase insert error:", error.message, error);
+        } else {
+          console.log("[saveDogProfile/addDog] Supabase insert success:", insertedList);
+        }
+
+        const effectiveId = insertedList?.[0]?.id || newDogId;
+
+        // 2. Persist extended profile in localStorage (dogProfile)
+        const local = getLocalDogProfiles();
+        local[effectiveId] = { name, breed, birthdate, photo };
+        localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
+        window.dispatchEvent(new CustomEvent("dog-profile-changed", { detail: { id: effectiveId, name } }));
+
+        // 3. Optimistically add to state immediately
+        const newDogObj: Dog = {
+          id: effectiveId,
+          name,
+          photo: photo || null,
+          owner_id: session.user.id,
+          breed: breed || null,
+          birthdate: birthdate || null,
+        };
+        setDogs((prev) => [...prev.filter((d) => d.id !== effectiveId), newDogObj]);
+
+        // 4. Reload all store data to sync
+        await load();
+        return newDogObj;
+      } catch (err) {
+        console.error("[saveDogProfile/addDog] Exception:", err);
+        return null;
+      }
     },
     [load]
   );
@@ -431,6 +476,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           photo: updates.photo !== undefined ? updates.photo : local[id]?.photo,
         };
         localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
+        window.dispatchEvent(new CustomEvent("dog-profile-changed", { detail: { id, updates } }));
 
         // Optimistic UI state update immediately
         setDogs((prev) =>
@@ -446,21 +492,21 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const removeDog = useCallback(
-    (id: string) => {
-      void (async () => {
-        try {
-          const { error } = await createClient().from("dogs").delete().eq("id", id);
-          if (error) console.error("removeDog error:", error.message);
+    async (id: string) => {
+      try {
+        const { error } = await createClient().from("dogs").delete().eq("id", id);
+        if (error) console.error("removeDog error:", error.message);
 
-          const local = getLocalDogProfiles();
-          delete local[id];
-          localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
+        const local = getLocalDogProfiles();
+        delete local[id];
+        localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
+        window.dispatchEvent(new CustomEvent("dog-profile-changed", { detail: { id, deleted: true } }));
 
-          await load();
-        } catch (err) {
-          console.error("removeDog exception:", err);
-        }
-      })();
+        setDogs((prev) => prev.filter((d) => d.id !== id));
+        await load();
+      } catch (err) {
+        console.error("removeDog exception:", err);
+      }
     },
     [load]
   );
@@ -468,6 +514,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const clearAllData = useCallback(async () => {
     try {
       const s = createClient();
+      console.log("[clearAllData] Clearing logs, schedules, and dogs from Supabase...");
       await Promise.all([
         s.from("logs").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
         s.from("schedules").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
@@ -475,6 +522,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       ]);
       localStorage.removeItem(DOG_PROFILE_STORAGE_KEY);
       localStorage.removeItem("custom_meal_config");
+      setDogs([]);
+      setSchedules([]);
+      setLogs([]);
+      window.dispatchEvent(new CustomEvent("dog-profile-changed", { detail: { cleared: true } }));
       await load();
     } catch (err) {
       console.error("clearAllData exception:", err);

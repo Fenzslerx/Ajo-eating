@@ -27,7 +27,7 @@ function formatThaiDate(date: Date) {
 }
 
 function TodayPageContent() {
-  const { dogs, logs, isLoading } = useAppStore()
+  const { dogs, logs, isLoading, load } = useAppStore()
   const searchParams = useSearchParams()
   
   // View mode: "today" | "history"
@@ -45,9 +45,16 @@ function TodayPageContent() {
     const handleConfigChange = () => {
       setActiveMealConfigs(getActiveMealConfig())
     }
+    const handleProfileChange = () => {
+      void load()
+    }
     window.addEventListener("meal-config-changed", handleConfigChange)
-    return () => window.removeEventListener("meal-config-changed", handleConfigChange)
-  }, [])
+    window.addEventListener("dog-profile-changed", handleProfileChange)
+    return () => {
+      window.removeEventListener("meal-config-changed", handleConfigChange)
+      window.removeEventListener("dog-profile-changed", handleProfileChange)
+    }
+  }, [load])
 
   // Listen to ?date=YYYY-MM-DD query param from stats calendar
   useEffect(() => {
