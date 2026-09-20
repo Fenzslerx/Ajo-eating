@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
       --bg: #f8fafc;
@@ -892,12 +893,18 @@
   <script>
     /**
      * =========================================================================
-     * 1. DATA LAYER (Data Storage & Strict Business Rules)
+     * 1. DATA LAYER (Supabase Database + Supabase Storage + Local Fallback)
      * =========================================================================
-     * - เก็บบันทึกแยกตาม record key วันที่จริงของเครื่อง (Key: "daily_record_YYYY-MM-DD")
-     * - บังคับ Logic: หน้า Home จะไม่มีทางเรียก saveRecord ได้เลย
-     * - บังคับ Logic: saveRecord จะล็อกให้บันทึกเฉพาะวันที่เป็น 'วันนี้' เท่านั้น
+     * - เก็บบันทึกข้อมูลและรูปภาพลง Supabase ทันที พร้อม Cache ใน LocalStorage
+     * - บังคับ Logic: หน้า Home ทำหน้าที่ดึงอย่างเดียว (Read-Only)
+     * - บังคับ Logic: หน้า Record บันทึกเฉพาะ Record ของ "วันปัจจุบัน" เท่านั้น
      */
+    const SUPABASE_URL = "https://lwwyhkpcltmkmwcmlkef.supabase.co";
+    const SUPABASE_ANON = "sb_publishable_PPfPE1l0Z9dOBJp6pMabHQ_pIA1UFrc";
+    const supabaseClient = (window.supabase && window.supabase.createClient)
+      ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON)
+      : null;
+
     const DataLayer = {
       KEY_PREFIX: "daily_record_",
 
@@ -910,43 +917,176 @@
         return `${y}-${m}-${d}`;
       },
 
-      // ดึง Record เฉพาะวันที่กำหนด (Read-Only)
-      getRecord(dateKey) {
+      // ดึง Record เฉพาะวันที่กำหนด
+      async getRecord(dateKey) {
+        // 1. ดึงจาก Local ก่อนเพื่อให้ UI เร็วทันใจ
+        let record = null;
         try {
           const raw = localStorage.getItem(this.KEY_PREFIX + dateKey);
-          return raw ? JSON.parse(raw) : null;
-        } catch (err) {
-          console.error("DataLayer.getRecord error:", err);
-          return null;
+          if (raw) record = JSON.parse(raw);
+        } catch (err) {}
+
+        // 2. ซิงค์ตรวจสอบกับ Supabase ถ้ามี client
+        if (supabaseClient) {
+          try {
+            const startOfDay = new Date(dateKey + 'T00:00:00.000Z').toISOString();
+            const endOfDay = new Date(dateKey + 'T23:59:59.999Z').toISOString();
+
+            const { data, error } = await supabaseClient
+              .from('logs')
+              .select('*')
+              .gte('at', startOfDay)
+              .lte('at', endOfDay)
+              .order('at', { ascending: false })
+              .limit(1);
+
+            if (!error && data && data.length > 0) {
+              const row = data[0];
+              let photoUrl = null;
+              if (row.photo) {
+                if (row.photo.startsWith('http')) {
+                  photoUrl = row.photo;
+                } else {
+                  const { data: signData } = await supabaseClient.storage.from('dog-photos').createSignedUrl(row.photo, 7200);
+                  photoUrl = signData ? signData.signedUrl : null;
+                }
+              }
+
+              record = {
+                dateKey: dateKey,
+                updatedAt: row.at || row.created_at,
+                status: row.status || 'finished',
+                notes: row.note || '',
+                photoBase64: photoUrl || record?.photoBase64 || null
+              };
+              localStorage.setItem(this.KEY_PREFIX + dateKey, JSON.stringify(record));
+            }
+          } catch (e) {
+            console.warn("Supabase fetch fallback to local:", e);
+          }
         }
+        return record;
       },
 
       // ดึงประวัติทั้งหมด เรียงจากล่าสุดไปเก่าสุด
-      getAllRecords() {
-        const results = [];
+      async getAllRecords() {
+        const localMap = new Map();
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i);
           if (k && k.startsWith(this.KEY_PREFIX)) {
             const dateStr = k.replace(this.KEY_PREFIX, "");
-            const item = this.getRecord(dateStr);
-            if (item) results.push(item);
+            try {
+              const item = JSON.parse(localStorage.getItem(k));
+              if (item) localMap.set(dateStr, item);
+            } catch (err) {}
           }
         }
+
+        // ดึงข้อมูลรวมจาก Supabase
+        if (supabaseClient) {
+          try {
+            const { data, error } = await supabaseClient
+              .from('logs')
+              .select('*')
+              .order('at', { ascending: false })
+              .limit(60);
+
+            if (!error && data) {
+              for (const row of data) {
+                const dateKey = row.at ? row.at.slice(0, 10) : new Date().toISOString().slice(0, 10);
+                if (!localMap.has(dateKey)) {
+                  let photoUrl = null;
+                  if (row.photo) {
+                    if (row.photo.startsWith('http')) {
+                      photoUrl = row.photo;
+                    } else {
+                      const { data: signData } = await supabaseClient.storage.from('dog-photos').createSignedUrl(row.photo, 7200);
+                      photoUrl = signData ? signData.signedUrl : null;
+                    }
+                  }
+                  localMap.set(dateKey, {
+                    dateKey: dateKey,
+                    updatedAt: row.at,
+                    status: row.status || 'finished',
+                    notes: row.note || '',
+                    photoBase64: photoUrl
+                  });
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("Supabase list sync:", e);
+          }
+        }
+
+        const results = Array.from(localMap.values());
         results.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
         return results;
       },
 
-      // บันทึกข้อมูล: บังคับ logic ให้บันทึกเฉพาะ "วันปัจจุบัน" เท่านั้น
-      // ป้องกันไม่ให้ส่วนใดๆ ในแอปเขียนทับวันในอดีตได้
-      saveTodayRecord(payload) {
+      // บันทึกข้อมูลและรูปภาพลง Supabase Storage + Database
+      // บังคับ logic: อนุญาตให้บันทึกเฉพาะ "วันปัจจุบัน" เท่านั้น
+      async saveTodayRecord(payload) {
         const today = this.getTodayDateString();
+        let uploadedPhotoPath = null;
+        let displayPhotoUrl = payload.photoBase64 || null;
 
+        // 1. ถ้ามีรูปใหม่และต่อกับ Supabase ให้ส่งเข้า Supabase Storage
+        if (supabaseClient && payload.photoBase64 && payload.photoBase64.startsWith('data:image/')) {
+          try {
+            // แปลง base64 เป็น Blob
+            const res = await fetch(payload.photoBase64);
+            const blob = await res.blob();
+            const fileName = `daily_${today}_${Date.now()}.jpg`;
+
+            const { data: uploadData, error: uploadError } = await supabaseClient
+              .storage
+              .from('dog-photos')
+              .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
+
+            if (!uploadError && uploadData) {
+              uploadedPhotoPath = uploadData.path || fileName;
+              // รับ signed URL
+              const { data: signData } = await supabaseClient.storage.from('dog-photos').createSignedUrl(uploadedPhotoPath, 7200);
+              if (signData?.signedUrl) {
+                displayPhotoUrl = signData.signedUrl;
+              }
+            } else {
+              console.warn("Supabase storage upload fallback:", uploadError);
+            }
+          } catch (err) {
+            console.error("Storage error:", err);
+          }
+        }
+
+        // 2. บันทึก Record ลง Supabase Database (ตาราง logs)
+        if (supabaseClient) {
+          try {
+            // ค้นหา dog id เริ่มต้นถ้ามี
+            const { data: dogs } = await supabaseClient.from('dogs').select('id').limit(1);
+            const defaultDogId = dogs && dogs[0] ? dogs[0].id : null;
+
+            if (defaultDogId) {
+              await supabaseClient.from('logs').insert({
+                dog_id: defaultDogId,
+                at: new Date().toISOString(),
+                status: payload.status || 'finished',
+                note: payload.notes || null,
+                photo: uploadedPhotoPath || payload.photoBase64 || null
+              });
+            }
+          } catch (err) {
+            console.warn("Supabase logs insert fallback:", err);
+          }
+        }
+
+        // 3. บันทึกลง Local Cache เสมอ เพื่อความเร็วและการันตีการทำงานแบบ Offline
         const record = {
           dateKey: today,
           updatedAt: new Date().toISOString(),
           status: payload.status || 'finished',
           notes: payload.notes || '',
-          photoBase64: payload.photoBase64 || null
+          photoBase64: displayPhotoUrl
         };
 
         try {
@@ -954,7 +1094,7 @@
           return record;
         } catch (e) {
           console.error("DataLayer.saveTodayRecord error:", e);
-          throw new Error("ไม่สามารถบันทึกข้อมูลได้ (พื้นที่จัดเก็บอาจเต็ม)");
+          throw new Error("ไม่สามารถบันทึกข้อมูลได้");
         }
       }
     };
@@ -998,9 +1138,9 @@
      * =========================================================================
      */
     const HomeRenderer = {
-      render() {
+      async render() {
         const todayKey = DataLayer.getTodayDateString();
-        const todayRecord = DataLayer.getRecord(todayKey);
+        const todayRecord = await DataLayer.getRecord(todayKey);
 
         // แสดงหัววันที่ภาษาไทย
         const todayObj = new Date();
@@ -1054,12 +1194,12 @@
         }
 
         // แสดงส่วนข้อมูลย้อนหลัง
-        this.renderHistory();
+        await this.renderHistory();
       },
 
-      renderHistory() {
+      async renderHistory() {
         const container = document.getElementById('homeHistoryList');
-        const records = DataLayer.getAllRecords();
+        const records = await DataLayer.getAllRecords();
 
         if (records.length === 0) {
           container.innerHTML = `
@@ -1121,7 +1261,7 @@
     const RecordHandler = {
       currentBase64: null,
 
-      setup() {
+      async setup() {
         // ซ่อนกล่องแจ้งเตือนสำเร็จ แสดงฟอร์ม
         document.getElementById('recordFormContainer').style.display = 'flex';
         document.getElementById('saveSuccessBox').style.display = 'none';
@@ -1136,7 +1276,7 @@
         });
 
         // ดึง Record ของวันนี้มาใส่ฟอร์มเผื่อแก้ไขเพิ่มเติม
-        const existing = DataLayer.getRecord(todayKey);
+        const existing = await DataLayer.getRecord(todayKey);
         const form = document.getElementById('todayEntryForm');
 
         if (existing) {
@@ -1241,14 +1381,20 @@
         this.resetPhoto();
       },
 
-      onFormSubmit(event) {
+      async onFormSubmit(event) {
         event.preventDefault();
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = "⏳ กำลังบันทึกข้อมูลและอัปโหลดรูปภาพ...";
+        }
+
         const status = document.querySelector('input[name="entryStatus"]:checked').value;
         const notes = document.getElementById('entryNotes').value.trim();
 
         try {
-          // บันทึกข้อมูลผูกกับวันปัจจุบัน
-          DataLayer.saveTodayRecord({
+          // บันทึกข้อมูลและรูปภาพขึ้น Supabase + Local Cache
+          await DataLayer.saveTodayRecord({
             status: status,
             notes: notes,
             photoBase64: this.currentBase64
@@ -1259,6 +1405,11 @@
           document.getElementById('saveSuccessBox').style.display = 'flex';
         } catch (e) {
           alert(e.message);
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "💾 บันทึกข้อมูลวันนี้";
+          }
         }
       }
     };
@@ -1269,8 +1420,8 @@
      * =========================================================================
      */
     const HistoryViewer = {
-      open(dateKey) {
-        const item = DataLayer.getRecord(dateKey);
+      async open(dateKey) {
+        const item = await DataLayer.getRecord(dateKey);
         if (!item) return;
 
         const d = new Date(item.dateKey + 'T00:00:00');
