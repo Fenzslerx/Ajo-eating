@@ -29,25 +29,60 @@ function isDay(iso: string, offset = 0) {
 }
 
 export default function TodayPage() {
-  const { dogs, schedules, logs, addLog, updateLog, removeLog, isOnline } = useAppStore()
+  const { dogs, schedules, logs, addLog, updateLog, removeLog, isOnline, isLoading } = useAppStore()
   const [editingLog, setEditingLog] = useState<MealLog | null>(null)
   const [dayOffset, setDayOffset] = useState(0)
 
   const selectedLogs = logs.filter((l) => isDay(l.at, dayOffset))
 
-  function handleQuickLog(dogId: string, scheduleId: string, status: MealStatus) {
-    addLog({
-      dog_id: dogId,
-      schedule_id: scheduleId,
-      at: new Date().toISOString(),
-      status,
-      amount_g: null,
-      food: null,
-      note: null,
-      photo_before: null,
-      photo_after: null,
-    })
-    toast.success(isOnline ? "บันทึกแล้ว" : "บันทึกไว้แล้ว จะส่งอัตโนมัติเมื่อออนไลน์")
+  function handleStatusChange(
+    dogId: string,
+    scheduleId: string,
+    status: MealStatus,
+    existingLog: MealLog | null
+  ) {
+    if (existingLog) {
+      updateLog(existingLog.id, { status })
+      toast.success("อัปเดตสถานะแล้ว")
+    } else {
+      addLog({
+        dog_id: dogId,
+        schedule_id: scheduleId,
+        at: new Date().toISOString(),
+        status,
+        amount_g: null,
+        food: null,
+        note: null,
+        photo_before: null,
+        photo_after: null,
+      })
+      toast.success(isOnline ? "บันทึกแล้ว" : "บันทึกไว้แล้ว จะส่งอัตโนมัติเมื่อออนไลน์")
+    }
+  }
+
+  function handlePhotoChange(
+    dogId: string,
+    scheduleId: string,
+    photoUrl: string | null,
+    existingLog: MealLog | null
+  ) {
+    if (existingLog) {
+      updateLog(existingLog.id, { photo_after: photoUrl })
+      toast.success(photoUrl ? "บันทึกรูปภาพแล้ว" : "ลบรูปแล้ว")
+    } else if (photoUrl) {
+      addLog({
+        dog_id: dogId,
+        schedule_id: scheduleId,
+        at: new Date().toISOString(),
+        status: "finished",
+        amount_g: null,
+        food: null,
+        note: null,
+        photo_before: null,
+        photo_after: photoUrl,
+      })
+      toast.success("บันทึกรูปภาพแล้ว")
+    }
   }
 
   function handleUpdateLog(values: MealLogFormValues) {
@@ -73,6 +108,15 @@ export default function TodayPage() {
     toast.success("ลบมื้ออาหารแล้ว")
   }
 
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground">กำลังโหลดข้อมูล...</p>
+      </div>
+    )
+  }
+
   if (dogs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 px-6 py-24 text-center">
@@ -93,12 +137,29 @@ export default function TodayPage() {
         <PawPrint className="size-5 text-primary" aria-hidden="true" />
         <h1 className="text-xl font-bold text-foreground">{dayOffset === 0 ? "วันนี้" : "เมื่อวาน"}</h1>
       </header>
-      <div className="grid grid-cols-2 rounded-xl bg-secondary/50 p-1"><button onClick={() => setDayOffset(0)} className={`rounded-lg py-2 text-sm font-medium ${dayOffset === 0 ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}>วันนี้</button><button onClick={() => setDayOffset(1)} className={`rounded-lg py-2 text-sm font-medium ${dayOffset === 1 ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}>ดูข้อมูลเมื่อวาน</button></div>
+      <div className="grid grid-cols-2 rounded-xl bg-secondary/50 p-1">
+        <button
+          onClick={() => setDayOffset(0)}
+          className={`rounded-lg py-2 text-sm font-medium transition-all ${
+            dayOffset === 0 ? "bg-card text-primary shadow-sm" : "text-muted-foreground"
+          }`}
+        >
+          วันนี้
+        </button>
+        <button
+          onClick={() => setDayOffset(1)}
+          className={`rounded-lg py-2 text-sm font-medium transition-all ${
+            dayOffset === 1 ? "bg-card text-primary shadow-sm" : "text-muted-foreground"
+          }`}
+        >
+          ดูข้อมูลเมื่อวาน
+        </button>
+      </div>
 
       {dogs.map((dog) => {
         const dogSchedules = schedules.filter((s) => s.dog_id === dog.id)
-        const dogLogsToday = selectedLogs.filter((l) => l.dog_id === dog.id)
-        const latestLog = dogLogsToday[0] ?? null
+        const dogLogsDay = selectedLogs.filter((l) => l.dog_id === dog.id)
+        const latestLog = dogLogsDay[0] ?? null
         const latestSchedule = latestLog
           ? dogSchedules.find((s) => s.id === latestLog.schedule_id) ?? null
           : null
@@ -111,24 +172,28 @@ export default function TodayPage() {
               latestLog={latestLog}
               latestSchedule={latestSchedule}
             />
+
             {dogSchedules.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
-                ยังไม่มีมื้ออาหาร ไปที่{" "}
-                <Link href="/settings" className="text-primary underline underline-offset-2">
-                  ตั้งค่า
-                </Link>{" "}
-                เพื่อเพิ่มมื้อแรก
+              <div className="rounded-2xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">
+                <p>ยังไม่มีมื้ออาหาร</p>
+                <Link
+                  href="/settings"
+                  className="mt-2 inline-flex items-center gap-1 font-medium text-primary underline underline-offset-2"
+                >
+                  <Plus className="size-4" /> ไปที่ตั้งค่าเพื่อเพิ่มมื้อเช้า/เย็น
+                </Link>
               </div>
             ) : (
               <div className="flex flex-col gap-3">
-                {dayOffset === 0 && dogSchedules.map((schedule) => {
-                  const log = dogLogsToday.find((l) => l.schedule_id === schedule.id) ?? null
+                {dogSchedules.map((schedule) => {
+                  const log = dogLogsDay.find((l) => l.schedule_id === schedule.id) ?? null
                   return (
                     <MealCard
                       key={schedule.id}
                       schedule={schedule}
                       log={log}
-                      onQuickLog={(status) => handleQuickLog(dog.id, schedule.id, status)}
+                      onStatusChange={(status) => handleStatusChange(dog.id, schedule.id, status, log)}
+                      onPhotoChange={(photoUrl) => handlePhotoChange(dog.id, schedule.id, photoUrl, log)}
                       onOpenDetail={() => log && setEditingLog(log)}
                     />
                   )

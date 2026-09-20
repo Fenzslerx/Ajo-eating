@@ -197,7 +197,7 @@ export default function SettingsPage() {
                 >
                   <div className="flex flex-col">
                     <span className="text-sm font-medium text-foreground">{schedule.label}</span>
-                    <span className="text-xs text-muted-foreground">{schedule.time} น.</span>
+                    <span className="text-xs text-muted-foreground">{schedule.time.slice(0, 5)} น.</span>
                   </div>
                   <Button
                     variant="ghost"
@@ -215,6 +215,51 @@ export default function SettingsPage() {
               )}
             </div>
             <Card className="flex flex-col gap-3 rounded-xl border-dashed p-3">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">เลือกมื้อด่วน:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScheduleLabel("เช้า")
+                      setScheduleTime("08:00")
+                    }}
+                    className="rounded-lg bg-secondary px-2.5 py-1 text-xs hover:bg-secondary/80"
+                  >
+                    🌅 เช้า (08:00)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScheduleLabel("เช้า")
+                      setScheduleTime("10:00")
+                    }}
+                    className="rounded-lg bg-secondary px-2.5 py-1 text-xs hover:bg-secondary/80"
+                  >
+                    🌅 เช้า (10:00)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScheduleLabel("เย็น")
+                      setScheduleTime("17:00")
+                    }}
+                    className="rounded-lg bg-secondary px-2.5 py-1 text-xs hover:bg-secondary/80"
+                  >
+                    🌇 เย็น (17:00)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScheduleLabel("เย็น")
+                      setScheduleTime("19:00")
+                    }}
+                    className="rounded-lg bg-secondary px-2.5 py-1 text-xs hover:bg-secondary/80"
+                  >
+                    🌇 เย็น (19:00)
+                  </button>
+                </div>
+              </div>
               <form className="flex flex-col gap-3" onSubmit={handleAddSchedule}>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex flex-col gap-1.5">

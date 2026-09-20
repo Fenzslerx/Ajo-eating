@@ -1,27 +1,23 @@
 "use client"
 
 import { useState } from "react"
-import { CheckCircle2, CircleDashed, XCircle } from "lucide-react"
+import { CheckCircle2, CircleDashed, Moon, Sun, Utensils, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { PhotoPicker } from "@/components/photo-picker"
 import { cn } from "@/lib/utils"
 import type { Dog, MealStatus, Schedule } from "@/lib/types"
 
-const STATUS_OPTIONS: { status: MealStatus; label: string; icon: typeof CheckCircle2 }[] = [
-  { status: "finished", label: "กินหมด", icon: CheckCircle2 },
-  { status: "partial", label: "กินบางส่วน", icon: CircleDashed },
-  { status: "none", label: "ไม่กิน", icon: XCircle },
+const STATUS_OPTIONS: { status: MealStatus; label: string; icon: typeof CheckCircle2; color: string }[] = [
+  { status: "finished", label: "กินหมด", icon: CheckCircle2, color: "text-emerald-500" },
+  { status: "partial", label: "กินบางส่วน", icon: CircleDashed, color: "text-amber-500" },
+  { status: "none", label: "ไม่กิน", icon: XCircle, color: "text-rose-500" },
 ]
+
+const FOOD_PRESETS = ["อาหารเม็ด", "อกไก่ต้ม", "อาหารเปียก", "บาร์ฟ"]
+const AMOUNT_PRESETS = ["50", "100", "150", "200"]
 
 export type MealLogFormValues = {
   dogId: string
@@ -40,6 +36,11 @@ function toLocalInputValue(iso: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+function formatTime(timeStr: string) {
+  if (!timeStr) return ""
+  return timeStr.slice(0, 5) + " น."
+}
+
 export function MealLogForm({
   dogs,
   schedules,
@@ -54,14 +55,16 @@ export function MealLogForm({
   onSubmit: (values: MealLogFormValues) => void
 }) {
   const [dogId, setDogId] = useState(initialValues?.dogId ?? dogs[0]?.id ?? "")
-  const [scheduleId, setScheduleId] = useState<string | null>(initialValues?.scheduleId ?? null)
+  const [scheduleId, setScheduleId] = useState<string | null>(
+    initialValues?.scheduleId ?? schedules.find((s) => s.dog_id === (initialValues?.dogId ?? dogs[0]?.id))?.id ?? null
+  )
   const [status, setStatus] = useState<MealStatus>(initialValues?.status ?? "finished")
   const [amountG, setAmountG] = useState(initialValues?.amountG ?? "")
   const [food, setFood] = useState(initialValues?.food ?? "")
   const [note, setNote] = useState(initialValues?.note ?? "")
   const [photoAfter, setPhotoAfter] = useState<string | null>(initialValues?.photoAfter ?? null)
   const [at, setAt] = useState(
-    initialValues?.at ? toLocalInputValue(initialValues.at) : toLocalInputValue(new Date().toISOString()),
+    initialValues?.at ? toLocalInputValue(initialValues.at) : toLocalInputValue(new Date().toISOString())
   )
 
   const dogSchedules = schedules.filter((s) => s.dog_id === dogId)
@@ -83,76 +86,128 @@ export function MealLogForm({
         })
       }}
     >
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="dog-select">น้องหมา</Label>
-        <Select value={dogId} onValueChange={(v) => { if (v) setDogId(v); setScheduleId(null) }}>
-          <SelectTrigger id="dog-select">
-            <SelectValue placeholder="เลือกน้องหมา">
-              {(value: string) => dogs.find((d) => d.id === value)?.name ?? "เลือกน้องหมา"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
+      {/* Dog Selection (Only show pills if multiple dogs) */}
+      {dogs.length > 1 && (
+        <div className="flex flex-col gap-2">
+          <Label>น้องหมา</Label>
+          <div className="flex flex-wrap gap-2">
             {dogs.map((dog) => (
-              <SelectItem key={dog.id} value={dog.id}>
-                {dog.name}
-              </SelectItem>
+              <button
+                key={dog.id}
+                type="button"
+                onClick={() => {
+                  setDogId(dog.id)
+                  const firstSchedule = schedules.find((s) => s.dog_id === dog.id)
+                  setScheduleId(firstSchedule?.id ?? null)
+                }}
+                className={cn(
+                  "rounded-full px-4 py-2 text-sm font-medium transition-all",
+                  dogId === dog.id
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                )}
+              >
+                🐶 {dog.name}
+              </button>
             ))}
-          </SelectContent>
-        </Select>
-      </div>
+          </div>
+        </div>
+      )}
 
+      {/* Meal Selection - Big easy cards */}
       <div className="flex flex-col gap-2">
-        <Label htmlFor="schedule-select">มื้ออาหาร</Label>
-        <Select value={scheduleId ?? "none"} onValueChange={(v) => setScheduleId(v === "none" ? null : v)}>
-          <SelectTrigger id="schedule-select">
-            <SelectValue placeholder="เลือกมื้ออาหาร">
-              {(value: string) => {
-                if (value === "none") return "ไม่ระบุมื้อ"
-                const s = dogSchedules.find((sc) => sc.id === value)
-                return s ? `${s.label} · ${s.time} น.` : "เลือกมื้ออาหาร"
-              }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">ไม่ระบุมื้อ</SelectItem>
-            {dogSchedules.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.label} · {s.time} น.
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Label>เลือกมื้ออาหาร</Label>
+        {dogSchedules.length === 0 ? (
+          <p className="text-xs text-muted-foreground">ยังไม่มีมื้ออาหารที่ตั้งไว้ (จะบันทึกแบบไม่ระบุมื้อ)</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {dogSchedules.map((s) => {
+              const isSelected = scheduleId === s.id
+              const isMorning = s.label.includes("เช้า")
+              const isEvening = s.label.includes("เย็น") || s.label.includes("ค่ำ")
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setScheduleId(s.id)}
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-1 rounded-2xl border p-3 text-center transition-all",
+                    isSelected
+                      ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/20 shadow-sm"
+                      : "border-border bg-secondary/40 text-secondary-foreground hover:bg-secondary"
+                  )}
+                >
+                  {isMorning ? (
+                    <Sun className="size-5 text-amber-500" />
+                  ) : isEvening ? (
+                    <Moon className="size-5 text-indigo-400" />
+                  ) : (
+                    <Utensils className="size-5 text-primary" />
+                  )}
+                  <span className="font-semibold text-sm">{s.label}</span>
+                  <span className="text-xs text-muted-foreground">{formatTime(s.time)}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
-      <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium text-foreground">สถานะการกิน</legend>
+      {/* Status Selection */}
+      <div className="flex flex-col gap-2">
+        <Label>สถานะการกิน</Label>
         <div className="grid grid-cols-3 gap-2">
-          {STATUS_OPTIONS.map(({ status: s, label, icon: Icon }) => (
+          {STATUS_OPTIONS.map(({ status: s, label, icon: Icon, color }) => (
             <button
               key={s}
               type="button"
               onClick={() => setStatus(s)}
-              aria-pressed={status === s}
               className={cn(
-                "flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl border px-1 py-2 text-xs font-medium transition-colors",
+                "flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl border px-1 py-2 text-xs font-medium transition-all active:scale-95",
                 status === s
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-secondary/40 text-secondary-foreground hover:bg-secondary/70",
+                  ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/20 shadow-sm"
+                  : "border-border bg-secondary/40 text-secondary-foreground hover:bg-secondary"
               )}
             >
-              <Icon className="size-5" aria-hidden="true" />
+              <Icon className={cn("size-5", status === s ? "text-primary" : color)} />
               {label}
             </button>
           ))}
         </div>
-      </fieldset>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="at-input">เวลา</Label>
-        <Input id="at-input" type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} required />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      {/* Photo Picker */}
+      <PhotoPicker
+        id="photo-after"
+        label="รูปอาหาร / รูปชามอาหาร"
+        value={photoAfter}
+        onChange={setPhotoAfter}
+      />
+
+      {/* Quick Food selection & Amount */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="food-input">ชื่ออาหาร</Label>
+          <Input
+            id="food-input"
+            value={food}
+            onChange={(e) => setFood(e.target.value)}
+            placeholder="เช่น อาหารเม็ด, อกไก่"
+          />
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {FOOD_PRESETS.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setFood(item)}
+                className="rounded-lg bg-secondary/80 px-2.5 py-1 text-xs text-secondary-foreground hover:bg-secondary active:scale-95"
+              >
+                + {item}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex flex-col gap-2">
           <Label htmlFor="amount-input">ปริมาณ (กรัม)</Label>
           <Input
@@ -164,32 +219,48 @@ export function MealLogForm({
             onChange={(e) => setAmountG(e.target.value)}
             placeholder="เช่น 150"
           />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="food-input">ชื่ออาหาร</Label>
-          <Input
-            id="food-input"
-            value={food}
-            onChange={(e) => setFood(e.target.value)}
-            placeholder="เช่น อาหารเม็ดไก่"
-          />
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {AMOUNT_PRESETS.map((grams) => (
+              <button
+                key={grams}
+                type="button"
+                onClick={() => setAmountG(grams)}
+                className="rounded-lg bg-secondary/80 px-2.5 py-1 text-xs text-secondary-foreground hover:bg-secondary active:scale-95"
+              >
+                {grams}g
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
+      {/* Note & Time */}
       <div className="flex flex-col gap-2">
-        <Label htmlFor="note-input">บันทึกเพิ่มเติม</Label>
+        <Label htmlFor="note-input">บันทึกเพิ่มเติม (ไม่บังคับ)</Label>
         <Textarea
           id="note-input"
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="เช่น กินช้ากว่าปกติ"
-          rows={3}
+          placeholder="เช่น กินเกลี้ยง, ใส่ยาบำรุงด้วย"
+          rows={2}
         />
       </div>
 
-      <PhotoPicker id="photo-after" label="รูปหลังกิน" value={photoAfter} onChange={setPhotoAfter} />
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="at-input" className="text-xs text-muted-foreground">
+          เวลาที่บันทึก
+        </Label>
+        <Input
+          id="at-input"
+          type="datetime-local"
+          value={at}
+          onChange={(e) => setAt(e.target.value)}
+          className="h-10 text-xs"
+          required
+        />
+      </div>
 
-      <Button type="submit" size="lg" className="min-h-12 rounded-full" disabled={!dogId}>
+      <Button type="submit" size="lg" className="min-h-12 rounded-full font-semibold" disabled={!dogId}>
         {submitLabel}
       </Button>
     </form>

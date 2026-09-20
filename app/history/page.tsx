@@ -94,13 +94,26 @@ export default function HistoryPage() {
                   onClick={() => setSelected(log)}
                   className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-secondary/40"
                 >
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium text-foreground">
-                      {dog?.name} · {schedule?.label ?? "ไม่ระบุมื้อ"}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDateTime(log.at)} · บันทึกโดย {by?.name ?? "ไม่ทราบ"}
-                    </span>
+                  <div className="flex items-center gap-3">
+                    {log.photo_after ? (
+                      <img
+                        src={log.photo_after}
+                        alt="รูปอาหาร"
+                        className="size-11 rounded-lg border border-border object-cover"
+                      />
+                    ) : (
+                      <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-lg">
+                        {schedule?.label?.includes("เช้า") ? "🌅" : schedule?.label?.includes("เย็น") ? "🌇" : "🍽️"}
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium text-foreground">
+                        {dog?.name} · {schedule?.label ?? "ไม่ระบุมื้อ"}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDateTime(log.at)} · {by?.name ?? "สมาชิก"}
+                      </span>
+                    </div>
                   </div>
                   <StatusChip status={log.status} />
                 </button>
