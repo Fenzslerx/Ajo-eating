@@ -31,6 +31,7 @@ export default function SettingsPage() {
     members,
     profiles,
     currentUserId,
+    currentUserEmail,
     addDog,
     removeDog,
     addSchedule,
@@ -78,10 +79,32 @@ export default function SettingsPage() {
 
   const activeDog = dogs.find((d) => d.id === activeDogId)
   const activeDogSchedules = schedules.filter((s) => s.dog_id === activeDogId)
-  const activeDogMembers = members
-    .filter((m) => m.dog_id === activeDogId)
-    .map((m) => ({ ...m, profile: profileFor(m.user_id) }))
-    .filter((m) => m.profile)
+
+  // Members list: make sure owner and current user are always displayed with their email
+  const rawMembers = members.filter((m) => m.dog_id === activeDogId)
+  const hasOwner = rawMembers.some((m) => m.role === "owner" || (activeDog && m.user_id === activeDog.owner_id))
+
+  const displayMembers = [...rawMembers]
+  if (!hasOwner && activeDog?.owner_id) {
+    displayMembers.unshift({
+      dog_id: activeDog.id,
+      user_id: activeDog.owner_id,
+      role: "owner",
+    })
+  }
+
+  const activeDogMembers = displayMembers.map((m) => {
+    const prof = profileFor(m.user_id)
+    const isCurrentUser = m.user_id === currentUserId
+    const email = prof?.email || (isCurrentUser ? currentUserEmail : "")
+    const name = prof?.name || (isCurrentUser ? (currentUserEmail ? currentUserEmail.split("@")[0] : "ฉัน") : (email ? email.split("@")[0] : "สมาชิก"))
+    return {
+      ...m,
+      name,
+      email: email || "(กำลังโหลดอีเมล...)",
+    }
+  })
+
   const canManage = activeDog?.owner_id === currentUserId
 
   function handleRemoveDog() {
@@ -295,8 +318,8 @@ export default function SettingsPage() {
               {activeDogMembers.map((m) => (
                 <MemberRow
                   key={m.user_id}
-                  name={m.profile!.name}
-                  email={m.profile!.email}
+                  name={m.name}
+                  email={m.email}
                   role={m.role}
                   canManage={canManage}
                   onRoleChange={(role) => { setMemberRole(activeDogId, m.user_id, role); toast.success(role === "viewer" ? "ตั้งเป็นดูอย่างเดียวแล้ว" : "อนุญาตให้เพิ่มข้อมูลแล้ว") }}

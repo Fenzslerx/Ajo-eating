@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { PawPrint, Plus, Trash2 } from "lucide-react"
+import { CalendarIcon, ChevronLeft, ChevronRight, PawPrint, Plus, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -14,27 +14,47 @@ import {
 import { DogHeader } from "@/components/dog-header"
 import { MealCard } from "@/components/meal-card"
 import { MealLogForm, type MealLogFormValues } from "@/components/meal-log-form"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useAppStore } from "@/lib/app-store"
 import type { MealLog, MealStatus } from "@/lib/types"
 
-function isDay(iso: string, offset = 0) {
-  const d = new Date(iso)
-  const now = new Date()
-  now.setDate(now.getDate() - offset)
+function isSameDate(a: string | Date, b: string | Date) {
+  const da = typeof a === "string" ? new Date(a) : a
+  const db = typeof b === "string" ? new Date(b) : b
   return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
   )
+}
+
+function formatThaiDate(date: Date) {
+  return date.toLocaleDateString("th-TH", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })
 }
 
 export default function TodayPage() {
   const { dogs, schedules, logs, addLog, updateLog, removeLog, isOnline, isLoading } = useAppStore()
   const [editingLog, setEditingLog] = useState<MealLog | null>(null)
   const [isNewLogOpen, setIsNewLogOpen] = useState(false)
-  const [dayOffset, setDayOffset] = useState(0)
+  
+  // View mode: "today" | "history"
+  const [viewMode, setViewMode] = useState<"today" | "history">("today")
+  // Custom date for history mode (defaults to yesterday)
+  const [historyDate, setHistoryDate] = useState<Date>(() => {
+    const y = new Date()
+    y.setDate(y.getDate() - 1)
+    return y
+  })
+  const [calendarOpen, setCalendarOpen] = useState(false)
 
-  const selectedLogs = logs.filter((l) => isDay(l.at, dayOffset))
+  const activeDate = viewMode === "today" ? new Date() : historyDate
+  const selectedLogs = logs.filter((l) => isSameDate(l.at, activeDate))
 
   function handleStatusChange(
     dogId: string,
@@ -137,7 +157,9 @@ export default function TodayPage() {
       <header className="flex items-center justify-between pt-2">
         <div className="flex items-center gap-2">
           <PawPrint className="size-5 text-primary" aria-hidden="true" />
-          <h1 className="text-xl font-bold text-foreground">{dayOffset === 0 ? "วันนี้" : "เมื่อวาน"}</h1>
+          <h1 className="text-xl font-bold text-foreground">
+            {viewMode === "today" ? "วันนี้" : "ข้อมูลย้อนหลัง"}
+          </h1>
         </div>
         <Button
           onClick={() => setIsNewLogOpen(true)}
@@ -148,23 +170,91 @@ export default function TodayPage() {
           บันทึกมื้ออาหาร
         </Button>
       </header>
-      <div className="grid grid-cols-2 rounded-xl bg-secondary/50 p-1">
-        <button
-          onClick={() => setDayOffset(0)}
-          className={`rounded-lg py-2 text-sm font-medium transition-all ${
-            dayOffset === 0 ? "bg-card text-primary shadow-sm" : "text-muted-foreground"
-          }`}
-        >
-          วันนี้
-        </button>
-        <button
-          onClick={() => setDayOffset(1)}
-          className={`rounded-lg py-2 text-sm font-medium transition-all ${
-            dayOffset === 1 ? "bg-card text-primary shadow-sm" : "text-muted-foreground"
-          }`}
-        >
-          ดูข้อมูลเมื่อวาน
-        </button>
+
+      {/* สลับดูวันนี้ กับ ดูข้อมูลย้อนหลัง */}
+      <div className="flex flex-col gap-2.5">
+        <div className="grid grid-cols-2 rounded-xl bg-secondary/50 p-1">
+          <button
+            onClick={() => setViewMode("today")}
+            className={`rounded-lg py-2 text-sm font-medium transition-all ${
+              viewMode === "today" ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            วันนี้ (ปัจจุบัน)
+          </button>
+          <button
+            onClick={() => setViewMode("history")}
+            className={`rounded-lg py-2 text-sm font-medium transition-all ${
+              viewMode === "history" ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            ดูข้อมูลย้อนหลัง
+          </button>
+        </div>
+
+        {/* ถ้าเลือกดูข้อมูลย้อนหลัง ให้เลือกวันที่ได้อิสระ ย้อนดูได้ทุกวัน */}
+        {viewMode === "history" && (
+          <div className="flex items-center justify-between rounded-xl border border-border bg-card p-2.5 shadow-xs">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={() => {
+                const prev = new Date(historyDate)
+                prev.setDate(prev.getDate() - 1)
+                setHistoryDate(prev)
+              }}
+              title="วันก่อนหน้า"
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+
+            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+              <PopoverTrigger
+                render={
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 rounded-lg bg-secondary/60 px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-secondary"
+                  />
+                }
+              >
+                <CalendarIcon className="size-3.5 text-primary" />
+                <span>{formatThaiDate(historyDate)}</span>
+              </PopoverTrigger>
+              <PopoverContent align="center" className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={historyDate}
+                  onSelect={(date) => {
+                    if (date) {
+                      setHistoryDate(date)
+                      setCalendarOpen(false)
+                    }
+                  }}
+                  disabled={{ after: new Date() }}
+                  autoFocus
+                />
+              </PopoverContent>
+            </Popover>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              disabled={isSameDate(new Date(), historyDate)}
+              onClick={() => {
+                const next = new Date(historyDate)
+                next.setDate(next.getDate() + 1)
+                if (next <= new Date()) {
+                  setHistoryDate(next)
+                }
+              }}
+              title="วันถัดไป"
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        )}
       </div>
 
       {dogs.map((dog) => {

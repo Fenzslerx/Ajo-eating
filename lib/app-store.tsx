@@ -6,6 +6,7 @@ import type { Dog, DogMember, MealLog, Profile, Schedule } from "./types";
 
 type Store = {
   currentUserId: string;
+  currentUserEmail: string;
   profiles: Profile[];
   dogs: Dog[];
   schedules: Schedule[];
@@ -54,6 +55,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<DogMember[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [userId, setUserId] = useState("");
+  const [userEmail, setUserEmail] = useState("");
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,6 +73,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         return;
       }
       setUserId(user.id);
+      setUserEmail(user.email || "");
 
       const [d, sc, l] = await Promise.all([
         s.from("dogs").select("id,name,photo,owner_id"),
@@ -100,16 +103,33 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           group.map((member: any) => ({ ...member, dog_id: dogRows[i]?.id }))
         );
         setMembers(all);
-        setProfiles(
-          all.map((member: any) => ({
-            id: member.user_id,
-            name: member.email ? member.email.split("@")[0] : (member.name || "Member"),
-            email: member.email || "",
-          }))
-        );
+
+        const profileMap = new Map<string, Profile>();
+        // Add current user profile
+        if (user.id) {
+          profileMap.set(user.id, {
+            id: user.id,
+            name: user.email ? user.email.split("@")[0] : "ฉัน",
+            email: user.email || "",
+          });
+        }
+        all.forEach((member: any) => {
+          if (member.user_id) {
+            profileMap.set(member.user_id, {
+              id: member.user_id,
+              name: member.email ? member.email.split("@")[0] : (member.name || "Member"),
+              email: member.email || "",
+            });
+          }
+        });
+        setProfiles(Array.from(profileMap.values()));
       } else {
         setMembers([]);
-        setProfiles([]);
+        setProfiles(user.id ? [{
+          id: user.id,
+          name: user.email ? user.email.split("@")[0] : "ฉัน",
+          email: user.email || "",
+        }] : []);
       }
     } catch (err) {
       console.error("Failed to load store data:", err);
@@ -376,6 +396,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Store>(
     () => ({
       currentUserId: userId,
+      currentUserEmail: userEmail,
       profiles,
       dogs,
       schedules,
@@ -397,7 +418,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       profileFor: (id) => profiles.find((p) => p.id === id),
     }),
     [
-      userId, profiles, dogs, schedules, logs, members,
+      userId, userEmail, profiles, dogs, schedules, logs, members,
       pending, online, isLoading,
       addLog, updateLog, removeLog, addDog, removeDog,
       addSchedule, removeSchedule, addMember, removeMember, setMemberRole,
