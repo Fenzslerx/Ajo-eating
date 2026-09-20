@@ -57,6 +57,11 @@ export function MealCard({
           ))}
         </div>
       )}
+      {log?.photo_after && (
+        <div className="overflow-hidden rounded-xl bg-muted">
+          <img src={log.photo_after} alt={`รูปหลังกินมื้อ${schedule.label}`} className="h-40 w-full object-cover" />
+        </div>
+      )}
     </Card>
   )
 }

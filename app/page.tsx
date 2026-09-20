@@ -111,7 +111,6 @@ export default function TodayPage() {
               latestLog={latestLog}
               latestSchedule={latestSchedule}
             />
-            {latestLog && <article className="overflow-hidden rounded-2xl border border-border bg-card"><div className="flex items-center gap-3 p-3"><div className="flex-1"><p className="font-semibold">{dog.name} {latestLog.status === "finished" ? "กินหมด" : latestLog.status === "partial" ? "กินบางส่วน" : "ไม่กิน"}</p><p className="mt-1 text-sm text-muted-foreground">รูปหลังกิน · {new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit" }).format(new Date(latestLog.at))}</p></div>{latestLog.photo_after && <img src={latestLog.photo_after} alt={`รูปหลังกินของ${dog.name}`} className="size-20 rounded-xl object-cover" />}</div></article>}
             {dogSchedules.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
                 ยังไม่มีมื้ออาหาร ไปที่{" "}
