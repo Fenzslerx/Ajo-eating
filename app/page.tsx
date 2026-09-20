@@ -31,6 +31,7 @@ function isDay(iso: string, offset = 0) {
 export default function TodayPage() {
   const { dogs, schedules, logs, addLog, updateLog, removeLog, isOnline, isLoading } = useAppStore()
   const [editingLog, setEditingLog] = useState<MealLog | null>(null)
+  const [isNewLogOpen, setIsNewLogOpen] = useState(false)
   const [dayOffset, setDayOffset] = useState(0)
 
   const selectedLogs = logs.filter((l) => isDay(l.at, dayOffset))
@@ -133,9 +134,19 @@ export default function TodayPage() {
 
   return (
     <div className="flex flex-col gap-6 px-4 pt-4">
-      <header className="flex items-center gap-2 pt-2">
-        <PawPrint className="size-5 text-primary" aria-hidden="true" />
-        <h1 className="text-xl font-bold text-foreground">{dayOffset === 0 ? "วันนี้" : "เมื่อวาน"}</h1>
+      <header className="flex items-center justify-between pt-2">
+        <div className="flex items-center gap-2">
+          <PawPrint className="size-5 text-primary" aria-hidden="true" />
+          <h1 className="text-xl font-bold text-foreground">{dayOffset === 0 ? "วันนี้" : "เมื่อวาน"}</h1>
+        </div>
+        <Button
+          onClick={() => setIsNewLogOpen(true)}
+          size="sm"
+          className="rounded-full gap-1.5 shadow-sm font-semibold"
+        >
+          <Plus className="size-4" />
+          บันทึกมื้ออาหาร
+        </Button>
       </header>
       <div className="grid grid-cols-2 rounded-xl bg-secondary/50 p-1">
         <button
@@ -204,6 +215,36 @@ export default function TodayPage() {
         )
       })}
 
+      {/* Dialog: บันทึกมื้ออาหารใหม่ */}
+      <Dialog open={isNewLogOpen} onOpenChange={setIsNewLogOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>บันทึกมื้ออาหาร</DialogTitle>
+          </DialogHeader>
+          <MealLogForm
+            dogs={dogs}
+            schedules={schedules}
+            submitLabel="บันทึกมื้ออาหาร"
+            onSubmit={(values) => {
+              addLog({
+                dog_id: values.dogId,
+                schedule_id: values.scheduleId,
+                at: values.at,
+                status: values.status,
+                amount_g: values.amountG ? Number(values.amountG) : null,
+                food: values.food || null,
+                note: values.note || null,
+                photo_before: null,
+                photo_after: values.photoAfter,
+              })
+              setIsNewLogOpen(false)
+              toast.success(isOnline ? "บันทึกมื้ออาหารสำเร็จ" : "บันทึกไว้แล้ว จะซิงค์เมื่อออนไลน์")
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: แก้ไขมื้ออาหาร */}
       <Dialog open={!!editingLog} onOpenChange={(open) => !open && setEditingLog(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
