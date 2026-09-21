@@ -308,6 +308,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     };
     addEventListener("dog-profile-changed", onProfileChanged);
 
+    // Handle Safari / Chrome Back-Forward Cache restoration
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        debouncedLoad();
+      }
+    };
+    addEventListener("pageshow", onPageShow);
+
     const s = createClient();
     const ch = s
       .channel("dogmeal-ui")
@@ -322,6 +330,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       removeEventListener("online", up);
       removeEventListener("offline", down);
       removeEventListener("dog-profile-changed", onProfileChanged);
+      removeEventListener("pageshow", onPageShow);
       if (reloadTimer.current) clearTimeout(reloadTimer.current);
       s.removeChannel(ch);
     };
