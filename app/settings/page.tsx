@@ -227,15 +227,18 @@ export default function SettingsPage() {
       if (error) {
         setBackendStatus("disconnected")
         setDiagnosticError(`[Database Error] Code: ${error.code || "UNKNOWN"} - ${error.message} (${error.details || error.hint || "No further details"})`)
+        console.error("[Settings/runDiagnostics] DB check failed:", error)
       } else {
         setBackendStatus("connected")
         setDiagnosticError(null)
       }
-      await load()
+      // NOTE: do NOT call load() here — AppStoreProvider already manages sync state.
+      // Calling load() here causes a double-load every time the Settings page mounts.
     } catch (err: unknown) {
       setBackendStatus("disconnected")
       const message = err instanceof Error ? err.stack || err.message : String(err)
       setDiagnosticError(`[Runtime Exception] ${message}`)
+      console.error("[Settings/runDiagnostics] Exception:", err)
     } finally {
       setIsDiagnosing(false)
     }

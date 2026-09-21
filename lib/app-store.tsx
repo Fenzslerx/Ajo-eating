@@ -121,12 +121,25 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
+  // Guard against concurrent load() calls — prevents race condition where two
+  // loads run in parallel and the slower one overwrites state with stale data.
+  const loadInFlight = useRef(false);
+
   // Debounce ref for realtime reload
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
+    // Prevent concurrent loads — if a load is already in flight, skip.
+    if (loadInFlight.current) {
+      console.warn("[AppStore] load() skipped — previous load still in flight");
+      return;
+    }
+    loadInFlight.current = true;
     setIsLoading(true);
-    const timeout = setTimeout(() => setIsLoading(false), 8000);
+    const timeout = setTimeout(() => {
+      loadInFlight.current = false;
+      setIsLoading(false);
+    }, 8000);
     try {
       const s = createClient();
       const { data: { session } } = await s.auth.getSession();
@@ -268,11 +281,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setLastSyncedAt(new Date());
       setSyncError(null);
     } catch (err: unknown) {
-      console.error("Failed to load store data:", err);
+      console.error("[AppStore] load() failed:", err);
       const errMessage = err instanceof Error ? err.message : String(err);
       setSyncError(errMessage || "เกิดข้อผิดพลาดในการโหลดข้อมูลจากเซิร์ฟเวอร์");
     } finally {
       clearTimeout(timeout);
+      loadInFlight.current = false;
       setIsLoading(false);
     }
   }, []);
@@ -283,12 +297,19 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     reloadTimer.current = setTimeout(() => void load(), 500);
   }, [load]);
 
-  // Listen to Supabase auth state change: when SIGNED_IN or TOKEN_REFRESHED, trigger load() immediately
+  // Listen to Supabase auth state change.
+  // NOTE: onAuthStateChange fires INITIAL_SESSION on subscribe, so we do NOT
+  // call void load() separately — doing so causes a double load race condition.
   useEffect(() => {
     const s = createClient();
     const { data: { subscription } } = s.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
-        void load();
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED" || event === "INITIAL_SESSION") {
+        if (session?.user) {
+          void load();
+        } else if (event === "INITIAL_SESSION") {
+          // No session on initial check — stop loading spinner
+          setIsLoading(false);
+        }
       } else if (event === "SIGNED_OUT") {
         setDogs([]);
         setSchedules([]);
@@ -300,9 +321,6 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     });
-
-    // Initial load call
-    void load();
 
     return () => {
       subscription.unsubscribe();
@@ -371,40 +389,46 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const addLog = useCallback(
     (x: Omit<MealLog, "id" | "by">) => {
       const save = async () => {
-        const s = createClient();
-        const payload: any = {
-          dog_id: x.dog_id,
-          schedule_id: x.schedule_id,
-          at: x.at,
-          status: x.status,
-          amount_g: x.amount_g,
-          food: x.food,
-          note: x.note,
-        };
+        try {
+          const s = createClient();
+          const payload: any = {
+            dog_id: x.dog_id,
+            schedule_id: x.schedule_id,
+            at: x.at,
+            status: x.status,
+            amount_g: x.amount_g,
+            food: x.food,
+            note: x.note,
+          };
 
-        const preview = x.photo_after;
-        if (preview?.startsWith("blob:") || preview?.startsWith("data:")) {
-          try {
-            const blob = await fetch(preview).then((r) => r.blob());
-            const path = `${x.dog_id}/${crypto.randomUUID()}.jpg`;
-            const { error: uploadErr } = await s.storage
-              .from("meal-photos")
-              .upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: true });
-            if (!uploadErr) {
-              payload.photo = path;
-            } else {
-              captureSupabaseError(uploadErr, { operation: "storage", targetName: "meal-photos" });
+          const preview = x.photo_after;
+          if (preview?.startsWith("blob:") || preview?.startsWith("data:")) {
+            try {
+              const blob = await fetch(preview).then((r) => r.blob());
+              const path = `${x.dog_id}/${crypto.randomUUID()}.jpg`;
+              const { error: uploadErr } = await s.storage
+                .from("meal-photos")
+                .upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: true });
+              if (!uploadErr) {
+                payload.photo = path;
+              } else {
+                captureSupabaseError(uploadErr, { operation: "storage", targetName: "meal-photos" });
+              }
+            } catch (storageErr) {
+              captureSupabaseError(storageErr, { operation: "storage", targetName: "meal-photos" });
             }
-          } catch (storageErr) {
-            captureSupabaseError(storageErr, { operation: "storage", targetName: "meal-photos" });
           }
-        }
 
-        const { error: insertErr } = await s.from("logs").insert(payload);
-        if (insertErr) {
-          captureSupabaseError(insertErr, { operation: "insert", targetName: "logs" });
+          const { error: insertErr } = await s.from("logs").insert(payload);
+          if (insertErr) {
+            captureSupabaseError(insertErr, { operation: "insert", targetName: "logs" });
+            console.error("[addLog] insert failed:", insertErr.message, insertErr.details);
+          }
+          await load();
+        } catch (err) {
+          captureSupabaseError(err, { operation: "insert", targetName: "logs" });
+          console.error("[addLog] unexpected error in save():", err);
         }
-        await load();
       };
 
       if (!navigator.onLine) {
