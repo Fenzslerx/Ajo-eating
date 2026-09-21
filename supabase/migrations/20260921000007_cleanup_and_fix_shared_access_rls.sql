@@ -137,39 +137,55 @@ values ('meal-photos', 'meal-photos', false)
 on conflict (id) do update set public = false;
 
 do $$ begin
-  create policy "authenticated read photos" on storage.objects
-    for select using (
-      bucket_id in ('dog-photos', 'meal-photos')
-      and auth.uid() is not null
-    );
-exception when duplicate_object then null;
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname = 'storage' and tablename = 'objects' and policyname = 'authenticated read photos'
+  ) then
+    create policy "authenticated read photos" on storage.objects
+      for select using (
+        bucket_id in ('dog-photos', 'meal-photos')
+        and auth.uid() is not null
+      );
+  end if;
 end $$;
 
 do $$ begin
-  create policy "authenticated upload photos" on storage.objects
-    for insert with check (
-      bucket_id in ('dog-photos', 'meal-photos')
-      and auth.uid() is not null
-    );
-exception when duplicate_object then null;
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname = 'storage' and tablename = 'objects' and policyname = 'authenticated upload photos'
+  ) then
+    create policy "authenticated upload photos" on storage.objects
+      for insert with check (
+        bucket_id in ('dog-photos', 'meal-photos')
+        and auth.uid() is not null
+      );
+  end if;
 end $$;
 
 do $$ begin
-  create policy "authenticated update photos" on storage.objects
-    for update using (
-      bucket_id in ('dog-photos', 'meal-photos')
-      and auth.uid() is not null
-    );
-exception when duplicate_object then null;
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname = 'storage' and tablename = 'objects' and policyname = 'authenticated update photos'
+  ) then
+    create policy "authenticated update photos" on storage.objects
+      for update using (
+        bucket_id in ('dog-photos', 'meal-photos')
+        and auth.uid() is not null
+      );
+  end if;
 end $$;
 
 do $$ begin
-  create policy "authenticated delete photos" on storage.objects
-    for delete using (
-      bucket_id in ('dog-photos', 'meal-photos')
-      and auth.uid() is not null
-    );
-exception when duplicate_object then null;
+  if not exists (
+    select 1 from pg_policies 
+    where schemaname = 'storage' and tablename = 'objects' and policyname = 'authenticated delete photos'
+  ) then
+    create policy "authenticated delete photos" on storage.objects
+      for delete using (
+        bucket_id in ('dog-photos', 'meal-photos')
+        and auth.uid() is not null
+      );
+  end if;
 end $$;
 
 -- ==============================================================================
