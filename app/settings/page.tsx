@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import {
+  Activity,
+  AlertOctagon,
   AlertTriangle,
   Bell,
   CheckCircle2,
@@ -12,8 +14,10 @@ import {
   LogOut,
   PawPrint,
   Plus,
+  RefreshCw,
   RotateCcw,
   ShieldCheck,
+  Terminal,
   Trash2,
   Upload,
   XCircle,
@@ -52,6 +56,9 @@ export default function SettingsPage() {
     clearAllData,
     isOnline,
     isLoading,
+    lastSyncedAt,
+    syncError,
+    load,
     signOut,
   } = useAppStore()
 
@@ -207,24 +214,36 @@ export default function SettingsPage() {
     }
   }
 
-  // 5. System Status (Supabase read-only check)
+  // 5. System Status (Supabase read-only check + Diagnostic logs)
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking")
+  const [diagnosticError, setDiagnosticError] = useState<string | null>(null)
+  const [isDiagnosing, setIsDiagnosing] = useState(false)
+
+  const runDiagnostics = async () => {
+    setIsDiagnosing(true)
+    setDiagnosticError(null)
+    try {
+      const client = createClient()
+      const { error } = await client.from("dogs").select("id").limit(1)
+      if (error) {
+        setBackendStatus("disconnected")
+        setDiagnosticError(`[Database Error] Code: ${error.code || "UNKNOWN"} - ${error.message} (${error.details || error.hint || "No further details"})`)
+      } else {
+        setBackendStatus("connected")
+        setDiagnosticError(null)
+      }
+      await load()
+    } catch (err: unknown) {
+      setBackendStatus("disconnected")
+      const message = err instanceof Error ? err.stack || err.message : String(err)
+      setDiagnosticError(`[Runtime Exception] ${message}`)
+    } finally {
+      setIsDiagnosing(false)
+    }
+  }
 
   useEffect(() => {
-    async function checkBackend() {
-      try {
-        const client = createClient()
-        const { error } = await client.from("dogs").select("id").limit(1)
-        if (error) {
-          setBackendStatus("disconnected")
-        } else {
-          setBackendStatus("connected")
-        }
-      } catch {
-        setBackendStatus("disconnected")
-      }
-    }
-    void checkBackend()
+    void runDiagnostics()
   }, [])
 
   if (isLoading) {
@@ -554,58 +573,114 @@ export default function SettingsPage() {
       </Card>
 
       {/* ─────────────────────────────────────────────────────────────
-          5. สถานะระบบ (System Status) — Read-Only
+          5. สถานะระบบ & ตรวจสอบข้อมูลล่าสุด (System Status & Diagnostics)
       ───────────────────────────────────────────────────────────── */}
-      <Card className="flex flex-col gap-3 rounded-2xl border border-border p-4 shadow-xs">
-        <div className="flex items-center gap-2 border-b border-border pb-3">
-          <ShieldCheck className="size-5 text-primary" />
-          <h2 className="text-base font-bold text-foreground">สถานะระบบ (System Status)</h2>
+      <Card className="flex flex-col gap-3.5 rounded-2xl border border-border p-4 shadow-xs">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="size-5 text-primary" />
+            <h2 className="text-base font-bold text-foreground">สถานะระบบและการซิงค์ข้อมูล</h2>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={runDiagnostics}
+            disabled={isDiagnosing}
+            className="h-8 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className={`size-3.5 ${isDiagnosing ? "animate-spin text-primary" : ""}`} />
+            {isDiagnosing ? "กำลังตรวจ..." : "ตรวจสอบเดี๋ยวนี้"}
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 gap-3 text-xs">
+          {/* Supabase Connection */}
           <div className="flex flex-col gap-1 rounded-xl bg-secondary/40 p-3">
-            <span className="text-muted-foreground">การเชื่อมต่อฐานข้อมูล Supabase</span>
+            <span className="text-muted-foreground">การเชื่อมต่อเซิร์ฟเวอร์</span>
             <div className="flex items-center gap-1.5 pt-0.5">
               {backendStatus === "connected" ? (
                 <>
-                  <CheckCircle2 className="size-4 text-emerald-500" />
-                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">เชื่อมต่อแล้ว</span>
+                  <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">เชื่อมต่อสมบูรณ์</span>
                 </>
               ) : backendStatus === "checking" ? (
                 <>
-                  <div className="size-3 animate-spin rounded-full border border-primary border-t-transparent" />
+                  <div className="size-3.5 animate-spin rounded-full border border-primary border-t-transparent shrink-0" />
                   <span className="font-semibold text-muted-foreground">กำลังตรวจสอบ...</span>
                 </>
               ) : (
                 <>
-                  <XCircle className="size-4 text-rose-500" />
-                  <span className="font-semibold text-rose-600">ไม่ได้เชื่อมต่อ</span>
+                  <XCircle className="size-4 text-rose-500 shrink-0" />
+                  <span className="font-semibold text-rose-600">การเชื่อมต่อขัดข้อง</span>
                 </>
               )}
             </div>
           </div>
 
+          {/* Realtime Data Sync Status */}
           <div className="flex flex-col gap-1 rounded-xl bg-secondary/40 p-3">
-            <span className="text-muted-foreground">สถานะเครือข่ายอินเทอร์เน็ต</span>
+            <span className="text-muted-foreground">สถานะข้อมูลล่าสุด</span>
             <div className="flex items-center gap-1.5 pt-0.5">
-              {isOnline ? (
+              {syncError ? (
                 <>
-                  <span className="size-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="font-semibold text-foreground">ออนไลน์ (Online)</span>
+                  <AlertOctagon className="size-4 text-rose-500 shrink-0" />
+                  <span className="font-semibold text-rose-600">ซิงค์ไม่สำเร็จ</span>
+                </>
+              ) : lastSyncedAt ? (
+                <>
+                  <Activity className="size-3.5 text-emerald-500 animate-pulse shrink-0" />
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                    ล่าสุด {lastSyncedAt.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} น.
+                  </span>
                 </>
               ) : (
                 <>
-                  <span className="size-2.5 rounded-full bg-amber-500" />
-                  <span className="font-semibold text-amber-600">ออฟไลน์ (Offline)</span>
+                  <div className="size-3.5 animate-spin rounded-full border border-primary border-t-transparent shrink-0" />
+                  <span className="font-semibold text-muted-foreground">กำลังโหลด...</span>
                 </>
               )}
             </div>
           </div>
         </div>
 
+        {/* Network status */}
+        <div className="flex items-center justify-between rounded-xl bg-secondary/30 px-3 py-2 text-xs">
+          <span className="text-muted-foreground">สัญญาณอินเทอร์เน็ต:</span>
+          <div className="flex items-center gap-1.5 font-medium">
+            {isOnline ? (
+              <>
+                <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-foreground">ออนไลน์ (Realtime Active)</span>
+              </>
+            ) : (
+              <>
+                <span className="size-2 rounded-full bg-amber-500" />
+                <span className="text-amber-600">ออฟไลน์ (ทำงานในเครื่อง)</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Log Box: แสดงเมื่อระบบมีปัญหา หรือแจ้งจุดพัง */}
+        {(diagnosticError || syncError) && (
+          <div className="flex flex-col gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs">
+            <div className="flex items-center gap-1.5 font-semibold text-rose-600 dark:text-rose-400">
+              <Terminal className="size-4" />
+              <span>Log ข้อผิดพลาดที่ระบบตรวจพบ:</span>
+            </div>
+            <pre className="max-h-32 overflow-x-auto whitespace-pre-wrap rounded-lg bg-black/60 p-2 font-mono text-[11px] text-rose-300">
+              {diagnosticError || syncError}
+            </pre>
+            <p className="text-[10px] text-rose-600/80 dark:text-rose-400/80">
+              * ข้อมูล Log นี้ถูกบันทึกเพื่อใช้ตรวจสอบและแก้ไขปัญหาฐานข้อมูลหรือสิทธิ์ RLS ทันที
+            </p>
+          </div>
+        )}
+
         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Info className="size-3.5 text-muted-foreground" />
-          <span>การตั้งค่าเชื่อมต่อถูกป้องกันผ่าน environment variable ปลอดภัยต่อการใช้งาน</span>
+          <Info className="size-3.5 text-muted-foreground shrink-0" />
+          <span>ระบบเชื่อมต่อ Realtime สด — ข้อมูลจะอัปเดตตรงกันอัตโนมัติเมื่อมีคนบันทึกอาหาร</span>
         </div>
       </Card>
 

@@ -18,6 +18,8 @@ type Store = {
   pendingCount: number;
   isOnline: boolean;
   isLoading: boolean;
+  lastSyncedAt: Date | null;
+  syncError: string | null;
   load: () => Promise<void>;
   signOut: () => Promise<void>;
   addLog: (x: Omit<MealLog, "id" | "by">) => void;
@@ -116,6 +118,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   // Debounce ref for realtime reload
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -243,8 +247,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           email: user.email || "",
         }] : []);
       }
-    } catch (err) {
+
+      setLastSyncedAt(new Date());
+      setSyncError(null);
+    } catch (err: unknown) {
       console.error("Failed to load store data:", err);
+      const errMessage = err instanceof Error ? err.message : String(err);
+      setSyncError(errMessage || "เกิดข้อผิดพลาดในการโหลดข้อมูลจากเซิร์ฟเวอร์");
     } finally {
       clearTimeout(timeout);
       setIsLoading(false);
@@ -806,6 +815,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       pendingCount: pending,
       isOnline: online,
       isLoading,
+      lastSyncedAt,
+      syncError,
       load,
       signOut,
       addLog,
@@ -830,7 +841,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }),
     [
       userId, userEmail, profiles, dogs, schedules, logs, members, notifications,
-      pending, online, isLoading,
+      pending, online, isLoading, lastSyncedAt, syncError,
       load, signOut, addLog, updateLog, removeLog, addDog, updateDog, removeDog, clearAllData,
       addSchedule, removeSchedule, addMember, removeMember, setMemberRole, markNotificationAsRead,
       getUserRole, createInviteLink, revokeInvite, getPendingInvites, acceptInvite,
