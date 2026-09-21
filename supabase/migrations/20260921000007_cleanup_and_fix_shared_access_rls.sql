@@ -68,21 +68,6 @@ drop policy if exists "owners manage members" on public.dog_members;
 drop policy if exists "authenticated view dog_members" on public.dog_members;
 drop policy if exists "authenticated manage dog_members" on public.dog_members;
 
--- ==============================================================================
--- PART 5: ลบ Policy เก่าทั้งหมดบน storage.objects
--- ==============================================================================
-drop policy if exists "members read dog photos" on storage.objects;
-drop policy if exists "members upload dog photos" on storage.objects;
-drop policy if exists "members update dog photos" on storage.objects;
-drop policy if exists "members delete dog photos" on storage.objects;
-drop policy if exists "members read meal photos" on storage.objects;
-drop policy if exists "members upload meal photos" on storage.objects;
-drop policy if exists "members update meal photos" on storage.objects;
-drop policy if exists "members delete meal photos" on storage.objects;
-drop policy if exists "authenticated read photos" on storage.objects;
-drop policy if exists "authenticated upload photos" on storage.objects;
-drop policy if exists "authenticated update photos" on storage.objects;
-drop policy if exists "authenticated delete photos" on storage.objects;
 
 -- ==============================================================================
 -- PART 6: สร้าง Policy ใหม่ (Shared Access - auth.uid() is not null)
@@ -151,29 +136,41 @@ insert into storage.buckets (id, name, public)
 values ('meal-photos', 'meal-photos', false)
 on conflict (id) do update set public = false;
 
-create policy "authenticated read photos" on storage.objects
-  for select using (
-    bucket_id in ('dog-photos', 'meal-photos')
-    and auth.uid() is not null
-  );
+do $$ begin
+  create policy "authenticated read photos" on storage.objects
+    for select using (
+      bucket_id in ('dog-photos', 'meal-photos')
+      and auth.uid() is not null
+    );
+exception when duplicate_object then null;
+end $$;
 
-create policy "authenticated upload photos" on storage.objects
-  for insert with check (
-    bucket_id in ('dog-photos', 'meal-photos')
-    and auth.uid() is not null
-  );
+do $$ begin
+  create policy "authenticated upload photos" on storage.objects
+    for insert with check (
+      bucket_id in ('dog-photos', 'meal-photos')
+      and auth.uid() is not null
+    );
+exception when duplicate_object then null;
+end $$;
 
-create policy "authenticated update photos" on storage.objects
-  for update using (
-    bucket_id in ('dog-photos', 'meal-photos')
-    and auth.uid() is not null
-  );
+do $$ begin
+  create policy "authenticated update photos" on storage.objects
+    for update using (
+      bucket_id in ('dog-photos', 'meal-photos')
+      and auth.uid() is not null
+    );
+exception when duplicate_object then null;
+end $$;
 
-create policy "authenticated delete photos" on storage.objects
-  for delete using (
-    bucket_id in ('dog-photos', 'meal-photos')
-    and auth.uid() is not null
-  );
+do $$ begin
+  create policy "authenticated delete photos" on storage.objects
+    for delete using (
+      bucket_id in ('dog-photos', 'meal-photos')
+      and auth.uid() is not null
+    );
+exception when duplicate_object then null;
+end $$;
 
 -- ==============================================================================
 -- PART 7: Table schema adjustments (Make sure all client-used columns exist)
