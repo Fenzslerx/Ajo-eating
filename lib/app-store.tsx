@@ -69,20 +69,32 @@ async function getCachedSignedUrl(
   }
 
   try {
+    // 1. Try primary bucket with transform options (if provided)
     const options: any = transform ? { transform } : undefined;
     const { data, error } = await client.storage.from(bucket).createSignedUrl(storagePath, 86400, options);
-    if (error || !data?.signedUrl) {
-      const altBucket = bucket === "dog-photos" ? "meal-photos" : "dog-photos";
-      const altResult = await client.storage.from(altBucket).createSignedUrl(storagePath, 86400, options);
-      if (altResult.data?.signedUrl) {
-        signedUrlCache.set(cacheKey, { url: altResult.data.signedUrl, expiresAt: now + 86000000 });
-        return altResult.data.signedUrl;
-      }
-      return null;
+    if (!error && data?.signedUrl) {
+      signedUrlCache.set(cacheKey, { url: data.signedUrl, expiresAt: now + 86000000 });
+      return data.signedUrl;
     }
 
-    signedUrlCache.set(cacheKey, { url: data.signedUrl, expiresAt: now + 86000000 });
-    return data.signedUrl;
+    // 2. If transform failed (e.g. Supabase Free tier or transform error), retry without transform
+    if (transform) {
+      const retryWithoutTransform = await client.storage.from(bucket).createSignedUrl(storagePath, 86400);
+      if (!retryWithoutTransform.error && retryWithoutTransform.data?.signedUrl) {
+        signedUrlCache.set(cacheKey, { url: retryWithoutTransform.data.signedUrl, expiresAt: now + 86000000 });
+        return retryWithoutTransform.data.signedUrl;
+      }
+    }
+
+    // 3. Try alternate bucket as fallback
+    const altBucket = bucket === "dog-photos" ? "meal-photos" : "dog-photos";
+    const altResult = await client.storage.from(altBucket).createSignedUrl(storagePath, 86400);
+    if (!altResult.error && altResult.data?.signedUrl) {
+      signedUrlCache.set(cacheKey, { url: altResult.data.signedUrl, expiresAt: now + 86000000 });
+      return altResult.data.signedUrl;
+    }
+
+    return null;
   } catch (err) {
     captureSupabaseError(err, { operation: "storage", targetName: bucket });
     return null;
