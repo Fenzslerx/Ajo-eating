@@ -165,12 +165,17 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setUserId(user.id);
       setUserEmail(user.email || "");
 
-      const [d, sc, l, notifRes] = await Promise.all([
-        s.from("dogs").select("id,name,photo,owner_id,created_at"),
+      const [sc, l, notifRes] = await Promise.all([
         s.from("schedules").select("id,dog_id,label,time"),
         s.from("logs").select("id,dog_id,schedule_id,at,status,amount_g,food,note,photo,by,created_at").order("at", { ascending: false }),
         s.from("notifications").select("id,dog_id,user_id,meal_key,schedule_id,message,is_read,created_at").order("created_at", { ascending: false }).limit(50),
       ]);
+
+      // Query dogs with breed and birthdate columns; fallback if column not yet added in Supabase
+      let d = await s.from("dogs").select("id,name,photo,owner_id,created_at,breed,birthdate");
+      if (d.error && (d.error.code === "42703" || d.error.message?.includes("breed") || d.error.message?.includes("birthdate"))) {
+        d = await s.from("dogs").select("id,name,photo,owner_id,created_at");
+      }
 
       if (d.error) {
         captureSupabaseError(d.error, { operation: "select", targetName: "dogs", userId: user.id });
@@ -605,14 +610,36 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         storagePhotoPath = photo;
       }
 
-      const { data: createdDogRecord, error: rpcError } = await s.rpc("create_dog", {
-        dog_name: cleanName,
-        dog_photo: storagePhotoPath ?? null,
-      });
+      let createdDogRecord: any = null;
+      try {
+        const { data, error: rpcError } = await s.rpc("create_dog", {
+          dog_name: cleanName,
+          dog_photo: storagePhotoPath ?? null,
+          dog_breed: breed?.trim() || null,
+          dog_birthdate: birthdate?.trim() || null,
+        });
+        if (rpcError) throw rpcError;
+        createdDogRecord = data;
+      } catch (callErr: any) {
+        // Fallback to 2-parameter signature if 4-parameter overload is not yet deployed
+        const { data, error: fallbackErr } = await s.rpc("create_dog", {
+          dog_name: cleanName,
+          dog_photo: storagePhotoPath ?? null,
+        });
+        if (fallbackErr) {
+          captureSupabaseError(fallbackErr, { operation: "rpc", targetName: "create_dog" });
+          throw new Error(`ไม่สามารถสร้างข้อมูลน้องหมาในระบบได้: ${fallbackErr.message}`);
+        }
+        createdDogRecord = data;
 
-      if (rpcError) {
-        captureSupabaseError(rpcError, { operation: "rpc", targetName: "create_dog" });
-        throw new Error(`ไม่สามารถสร้างข้อมูลน้องหมาในระบบได้: ${rpcError.message}`);
+        // If breed or birthdate provided, update them directly on the new dog row
+        const newId = (Array.isArray(createdDogRecord) ? createdDogRecord[0] : createdDogRecord)?.id;
+        if (newId && (breed || birthdate)) {
+          await s.from("dogs").update({
+            breed: breed?.trim() || null,
+            birthdate: birthdate?.trim() || null,
+          }).eq("id", newId);
+        }
       }
 
       const dogRow = (Array.isArray(createdDogRecord) ? createdDogRecord[0] : createdDogRecord) as {
@@ -651,6 +678,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         const s = createClient();
         const payload: any = {};
         if (updates.name !== undefined) payload.name = updates.name;
+        if (updates.breed !== undefined) payload.breed = updates.breed;
+        if (updates.birthdate !== undefined) payload.birthdate = updates.birthdate;
 
         // Upload photo if new blob
         if (updates.photo?.startsWith("blob:") || updates.photo?.startsWith("data:")) {

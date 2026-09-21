@@ -7,6 +7,19 @@
 -- ==============================================================================
 
 -- ==============================================================================
+-- PART 0: ลบตารางและฟังก์ชันเก่าที่ล้าสมัย
+-- ==============================================================================
+drop table if exists public.dog_invites cascade;
+drop function if exists public.create_invite_link(uuid, text);
+drop function if exists public.accept_invite(text);
+drop function if exists public.revoke_invite(uuid);
+drop function if exists public.get_dog_invites(uuid);
+drop function if exists public.set_dog_member_role(uuid, uuid, text);
+drop function if exists public.remove_dog_member(uuid, uuid);
+drop function if exists public.can_edit_dog(uuid);
+drop function if exists public.is_dog_owner(uuid);
+
+-- ==============================================================================
 -- PART 1: ลบ Policy เก่าทั้งหมดบน dogs
 -- ==============================================================================
 drop policy if exists "members can view dogs" on public.dogs;
@@ -195,7 +208,59 @@ as $$
   order by (case dm.role when 'owner' then 1 when 'caretaker' then 2 else 3 end), dm.created_at asc;
 $$;
 
-grant execute on function public.get_dog_members(uuid) to authenticated;
+-- Update create_dog so breed and birthdate can be stored directly
+create or replace function public.create_dog(
+  dog_name text,
+  dog_photo text default null,
+  dog_breed text default null,
+  dog_birthdate text default null
+)
+returns public.dogs
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_dog public.dogs;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้อง login ก่อนถึงจะเพิ่มน้องหมาได้';
+  end if;
+
+  if trim(dog_name) is null or length(trim(dog_name)) = 0 then
+    raise exception 'กรุณาระบุชื่อน้องหมา';
+  end if;
+
+  insert into public.dogs (name, photo, owner_id, breed, birthdate)
+  values (trim(dog_name), dog_photo, auth.uid(), trim(dog_breed), trim(dog_birthdate))
+  returning * into new_dog;
+
+  insert into public.dog_members (dog_id, user_id, role)
+  values (new_dog.id, auth.uid(), 'owner')
+  on conflict (dog_id, user_id) do update set role = 'owner';
+
+  return new_dog;
+end;
+$$;
+
+revoke all on function public.create_dog(text, text, text, text) from public;
+grant execute on function public.create_dog(text, text, text, text) to authenticated;
+
+-- Overload for backward compatibility with 2 arguments (dog_name, dog_photo)
+create or replace function public.create_dog(
+  dog_name text,
+  dog_photo text
+)
+returns public.dogs
+language sql
+security definer
+set search_path = public
+as $$
+  select public.create_dog(dog_name, dog_photo, null, null);
+$$;
+
+revoke all on function public.create_dog(text, text) from public;
+grant execute on function public.create_dog(text, text) to authenticated;
 
 -- ==============================================================================
 -- PART 9: Reload PostgREST schema cache
