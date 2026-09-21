@@ -304,6 +304,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       .channel("dogmeal-ui")
       .on("postgres_changes", { event: "*", schema: "public", table: "logs" }, debouncedLoad)
       .on("postgres_changes", { event: "*", schema: "public", table: "dogs" }, debouncedLoad)
+      .on("postgres_changes", { event: "*", schema: "public", table: "dog_members" }, debouncedLoad)
+      .on("postgres_changes", { event: "*", schema: "public", table: "dog_invites" }, debouncedLoad)
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, debouncedLoad)
       .subscribe();
 
