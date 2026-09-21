@@ -54,16 +54,14 @@ const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 async function getCachedSignedUrl(
   client: ReturnType<typeof createClient>,
   bucket: "dog-photos" | "meal-photos",
-  storagePath: string | null,
-  transform?: { width?: number; height?: number; resize?: "cover" | "contain" | "fill" }
+  storagePath: string | null
 ): Promise<string | null> {
   if (!storagePath) return null;
   if (storagePath.startsWith("http://") || storagePath.startsWith("https://") || storagePath.startsWith("data:")) {
     return storagePath;
   }
 
-  const transformKey = transform ? `:${transform.width}x${transform.height}_${transform.resize || "cover"}` : "";
-  const cacheKey = `${bucket}:${storagePath}${transformKey}`;
+  const cacheKey = `${bucket}:${storagePath}`;
   const now = Date.now();
   const cached = signedUrlCache.get(cacheKey);
   if (cached && cached.expiresAt > now + 60000) {
@@ -71,24 +69,14 @@ async function getCachedSignedUrl(
   }
 
   try {
-    // 1. Try primary bucket with transform options (if provided)
-    const options: any = transform ? { transform } : undefined;
-    const { data, error } = await client.storage.from(bucket).createSignedUrl(storagePath, 86400, options);
+    // Supabase Free Tier doesn't support image transformations, request direct signed URL
+    const { data, error } = await client.storage.from(bucket).createSignedUrl(storagePath, 86400);
     if (!error && data?.signedUrl) {
       signedUrlCache.set(cacheKey, { url: data.signedUrl, expiresAt: now + 86000000 });
       return data.signedUrl;
     }
 
-    // 2. If transform failed (e.g. Supabase Free tier or transform error), retry without transform
-    if (transform) {
-      const retryWithoutTransform = await client.storage.from(bucket).createSignedUrl(storagePath, 86400);
-      if (!retryWithoutTransform.error && retryWithoutTransform.data?.signedUrl) {
-        signedUrlCache.set(cacheKey, { url: retryWithoutTransform.data.signedUrl, expiresAt: now + 86000000 });
-        return retryWithoutTransform.data.signedUrl;
-      }
-    }
-
-    // 3. Try alternate bucket as fallback
+    // Fallback to alternate bucket if file was uploaded to the other bucket
     const altBucket = bucket === "dog-photos" ? "meal-photos" : "dog-photos";
     const altResult = await client.storage.from(altBucket).createSignedUrl(storagePath, 86400);
     if (!altResult.error && altResult.data?.signedUrl) {
@@ -209,9 +197,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
       const rawDogs = (d.data ?? []) as any[];
 
-      // Generate cached signed URLs for dog profile photos (using thumb 200x200)
+      // Generate cached signed URLs for dog profile photos
       const dogSigned = await Promise.all(
-        rawDogs.map((dog) => getCachedSignedUrl(s, "dog-photos", dog.photo, { width: 200, height: 200, resize: "cover" }))
+        rawDogs.map((dog) => getCachedSignedUrl(s, "dog-photos", dog.photo))
       );
 
       // Single source of truth: Map DB dogs only
@@ -241,12 +229,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setNotifications(notifRes.data ?? []);
       const logRows = l.data ?? [];
 
-      // Generate cached signed URLs in parallel for meal photos: both thumbnail and full
-      const [signedThumbs, signedFull] = await Promise.all([
-        Promise.all(logRows.map((row: any) => getCachedSignedUrl(s, "meal-photos", row.photo ?? null, { width: 200, height: 200, resize: "cover" }))),
-        Promise.all(logRows.map((row: any) => getCachedSignedUrl(s, "meal-photos", row.photo ?? null))),
-      ]);
-      setLogs(logRows.map((row: any, i: number) => mapLog(row, signedFull[i], signedThumbs[i])));
+      // Generate cached signed URLs in parallel for meal photos
+      const signedUrls = await Promise.all(
+        logRows.map((row: any) => getCachedSignedUrl(s, "meal-photos", row.photo ?? null))
+      );
+      setLogs(logRows.map((row: any, i: number) => mapLog(row, signedUrls[i], signedUrls[i])));
 
       // Load user profiles for author attribution across shared users
       const profileMap = new Map<string, Profile>();

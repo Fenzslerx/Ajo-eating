@@ -143,6 +143,14 @@ create policy "authenticated manage dog_members" on public.dog_members
   for all using (auth.uid() is not null) with check (auth.uid() is not null);
 
 -- E. Storage: dog-photos & meal-photos
+insert into storage.buckets (id, name, public)
+values ('dog-photos', 'dog-photos', false)
+on conflict (id) do update set public = false;
+
+insert into storage.buckets (id, name, public)
+values ('meal-photos', 'meal-photos', false)
+on conflict (id) do update set public = false;
+
 create policy "authenticated read photos" on storage.objects
   for select using (
     bucket_id in ('dog-photos', 'meal-photos')
