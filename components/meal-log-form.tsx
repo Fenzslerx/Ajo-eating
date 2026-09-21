@@ -56,19 +56,27 @@ export function MealLogForm({
   const [note, setNote] = useState(initialValues?.note ?? "")
   const [photoAfter, setPhotoAfter] = useState<string | null>(initialValues?.photoAfter ?? null)
 
-  // Real-time system time calculation
-  const [now, setNow] = useState(() => new Date())
+  // Snapshot time once on mount — re-evaluate once per minute to keep meal window accurate
+  // without triggering a full form re-render every 10 seconds.
+  const [nowMinute, setNowMinute] = useState(() => new Date())
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(new Date())
-    }, 10000)
-    return () => clearInterval(timer)
+    const alignToNextMinute = () => {
+      const ms = 60000 - (Date.now() % 60000)
+      const t = setTimeout(() => {
+        setNowMinute(new Date())
+        const interval = setInterval(() => setNowMinute(new Date()), 60000)
+        return () => clearInterval(interval)
+      }, ms)
+      return t
+    }
+    const t = alignToNextMinute()
+    return () => clearTimeout(t)
   }, [])
 
-  const currentMealKey = resolveMealKeyForRecord(now)
+  const currentMealKey = resolveMealKeyForRecord(nowMinute)
   const currentMealConfig = getMealConfig(currentMealKey)
-  const currentFormattedTime = formatRecordedTime(now)
+  const currentFormattedTime = formatRecordedTime(nowMinute)
 
   return (
     <form

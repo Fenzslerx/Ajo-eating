@@ -105,6 +105,9 @@ export default function HistoryPage() {
                       <img
                         src={log.photo_after}
                         alt="รูปอาหาร"
+                        loading="lazy"
+                        width={44}
+                        height={44}
                         className="size-11 rounded-lg border border-border object-cover"
                       />
                     ) : (

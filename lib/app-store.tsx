@@ -154,10 +154,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setUserEmail(user.email || "");
 
       const [d, sc, l, notifRes] = await Promise.all([
-        s.from("dogs").select("*"),
+        s.from("dogs").select("id,name,photo,owner_id,breed,birthdate"),
         s.from("schedules").select("id,dog_id,label,time"),
-        s.from("logs").select("*").order("at", { ascending: false }),
-        s.from("notifications").select("*").order("created_at", { ascending: false }).limit(50),
+        s.from("logs").select("id,dog_id,schedule_id,at,status,amount_g,food,note,photo,by,mealType,recordedAt").order("at", { ascending: false }),
+        s.from("notifications").select("id,dog_id,user_id,meal_key,schedule_id,message,is_read,created_at").order("created_at", { ascending: false }).limit(50),
       ]);
 
       if (d.error) {
