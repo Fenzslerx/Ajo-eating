@@ -124,14 +124,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   // Guard against concurrent load() calls — prevents race condition where two
   // loads run in parallel and the slower one overwrites state with stale data.
   const loadInFlight = useRef(false);
+  const pendingLoadRequested = useRef(false);
 
   // Debounce ref for realtime reload
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
-    // Prevent concurrent loads — if a load is already in flight, skip.
+    // If a load is already in flight, queue a follow-up load instead of dropping it
     if (loadInFlight.current) {
-      console.warn("[AppStore] load() skipped — previous load still in flight");
+      pendingLoadRequested.current = true;
       return;
     }
     loadInFlight.current = true;
@@ -302,13 +303,17 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout);
       loadInFlight.current = false;
       setIsLoading(false);
+      if (pendingLoadRequested.current) {
+        pendingLoadRequested.current = false;
+        setTimeout(() => void load(), 50);
+      }
     }
   }, []);
 
   /** Debounced reload — prevents rapid-fire realtime events from hammering DB */
   const debouncedLoad = useCallback(() => {
     if (reloadTimer.current) clearTimeout(reloadTimer.current);
-    reloadTimer.current = setTimeout(() => void load(), 500);
+    reloadTimer.current = setTimeout(() => void load(), 400);
   }, [load]);
 
   // Listen to Supabase auth state change.
@@ -377,6 +382,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     };
     addEventListener("pageshow", onPageShow);
 
+    // Refresh data when user switches back to tab/window
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        debouncedLoad();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     const s = createClient();
     const ch = s
       .channel("dogmeal-ui")
@@ -384,13 +397,20 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "dogs" }, debouncedLoad)
       .on("postgres_changes", { event: "*", schema: "public", table: "schedules" }, debouncedLoad)
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, debouncedLoad)
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.log("[AppStore] Realtime channel connected");
+        } else if (status === "CLOSED" || status === "CHANNEL_ERROR") {
+          console.warn("[AppStore] Realtime channel status:", status);
+        }
+      });
 
     return () => {
       removeEventListener("online", up);
       removeEventListener("offline", down);
       removeEventListener("dog-profile-changed", onProfileChanged);
       removeEventListener("pageshow", onPageShow);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       if (reloadTimer.current) clearTimeout(reloadTimer.current);
       s.removeChannel(ch);
     };

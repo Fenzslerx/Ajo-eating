@@ -271,7 +271,30 @@ revoke all on function public.create_dog(text, text) from public;
 grant execute on function public.create_dog(text, text) to authenticated;
 
 -- ==============================================================================
--- PART 9: Reload PostgREST schema cache
+-- PART 9: Ensure tables in supabase_realtime publication
+-- ==============================================================================
+do $$ begin
+  alter publication supabase_realtime add table public.dogs;
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  alter publication supabase_realtime add table public.schedules;
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  alter publication supabase_realtime add table public.logs;
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  alter publication supabase_realtime add table public.notifications;
+exception when duplicate_object then null;
+end $$;
+
+-- ==============================================================================
+-- PART 10: Reload PostgREST schema cache
 -- ==============================================================================
 notify pgrst, 'reload schema';
 
