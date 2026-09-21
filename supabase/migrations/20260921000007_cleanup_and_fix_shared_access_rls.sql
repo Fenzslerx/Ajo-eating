@@ -206,7 +206,6 @@ drop function if exists public.get_dog_members(uuid);
 -- Update get_dog_members so any authenticated user can view members without membership check
 create or replace function public.get_dog_members(target_dog_id uuid)
 returns table (
-  id uuid,
   dog_id uuid,
   user_id uuid,
   role text,
@@ -218,16 +217,15 @@ security definer
 stable
 as $$
   select 
-    dm.id,
     dm.dog_id,
     dm.user_id,
-    dm.role,
+    dm.role::text,
     dm.created_at,
     u.email::text
   from public.dog_members dm
   left join auth.users u on u.id = dm.user_id
   where dm.dog_id = target_dog_id
-  order by (case dm.role when 'owner' then 1 when 'caretaker' then 2 else 3 end), dm.created_at asc;
+  order by (case dm.role::text when 'owner' then 1 when 'caretaker' then 2 else 3 end), dm.created_at asc;
 $$;
 
 -- Update create_dog so breed and birthdate can be stored directly
