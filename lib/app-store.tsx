@@ -208,46 +208,63 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       );
       setLogs(logRows.map((row: any, i: number) => mapLog(row, signed[i])));
 
-      if (dogRows.length > 0) {
-        const groups = await Promise.all(
-          dogRows.map(async (dog) => {
-            const res = await s.rpc("get_dog_members", { target_dog_id: dog.id });
-            return (res.data ?? []) as any[];
-          })
-        );
-        const all = groups.flatMap((group, i) =>
-          group.map((member: any) => ({ ...member, dog_id: dogRows[i]?.id }))
-        );
-        setMembers(all);
-
-        const profileMap = new Map<string, Profile>();
-        // Add current user profile
-        if (user.id) {
-          profileMap.set(user.id, {
-            id: user.id,
-            name: user.email ? user.email.split("@")[0] : "ฉัน",
-            email: user.email || "",
-          });
-        }
-        all.forEach((member: any) => {
-          if (member.user_id) {
-            profileMap.set(member.user_id, {
-              id: member.user_id,
-              name: member.email ? member.email.split("@")[0] : (member.name || "Member"),
-              email: member.email || "",
-            });
-          }
-        });
-        setProfiles(Array.from(profileMap.values()));
-      } else {
-        setMembers([]);
-        setProfiles(user.id ? [{
+      // Load user profiles for author attribution across shared users
+      const profileMap = new Map<string, Profile>();
+      if (user.id) {
+        profileMap.set(user.id, {
           id: user.id,
           name: user.email ? user.email.split("@")[0] : "ฉัน",
           email: user.email || "",
-        }] : []);
+        });
       }
 
+      try {
+        const { data: appUsers, error: usersErr } = await s.rpc("get_app_users");
+        if (!usersErr && Array.isArray(appUsers)) {
+          appUsers.forEach((u: any) => {
+            if (u.id) {
+              profileMap.set(u.id, {
+                id: u.id,
+                name: u.email ? u.email.split("@")[0] : "สมาชิก",
+                email: u.email || "",
+              });
+            }
+          });
+        }
+      } catch {
+        // Ignore if RPC not yet created in Supabase
+      }
+
+      if (dogRows.length > 0) {
+        try {
+          const groups = await Promise.all(
+            dogRows.map(async (dog) => {
+              const res = await s.rpc("get_dog_members", { target_dog_id: dog.id });
+              return (res.data ?? []) as any[];
+            })
+          );
+          const all = groups.flatMap((group, i) =>
+            group.map((member: any) => ({ ...member, dog_id: dogRows[i]?.id }))
+          );
+          setMembers(all);
+
+          all.forEach((member: any) => {
+            if (member.user_id && !profileMap.has(member.user_id)) {
+              profileMap.set(member.user_id, {
+                id: member.user_id,
+                name: member.email ? member.email.split("@")[0] : (member.name || "สมาชิก"),
+                email: member.email || "",
+              });
+            }
+          });
+        } catch {
+          setMembers([]);
+        }
+      } else {
+        setMembers([]);
+      }
+
+      setProfiles(Array.from(profileMap.values()));
       setLastSyncedAt(new Date());
       setSyncError(null);
     } catch (err: unknown) {
@@ -321,8 +338,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       .channel("dogmeal-ui")
       .on("postgres_changes", { event: "*", schema: "public", table: "logs" }, debouncedLoad)
       .on("postgres_changes", { event: "*", schema: "public", table: "dogs" }, debouncedLoad)
-      .on("postgres_changes", { event: "*", schema: "public", table: "dog_members" }, debouncedLoad)
-      .on("postgres_changes", { event: "*", schema: "public", table: "dog_invites" }, debouncedLoad)
+      .on("postgres_changes", { event: "*", schema: "public", table: "schedules" }, debouncedLoad)
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, debouncedLoad)
       .subscribe();
 

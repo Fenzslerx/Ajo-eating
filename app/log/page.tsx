@@ -8,19 +8,13 @@ import { useAppStore } from "@/lib/app-store"
 import { isSameBangkokDay, getLogMealKey } from "@/lib/meal-utils"
 
 function LogFormContainer() {
-  const { dogs, schedules, logs, addLog, updateLog, isOnline, getUserRole } = useAppStore()
+  const { dogs, schedules, logs, addLog, updateLog, isOnline } = useAppStore()
   const router = useRouter()
   const searchParams = useSearchParams()
 
   const queryDogId = searchParams.get("dog")
 
   function handleSubmit(values: MealLogFormValues) {
-    const role = getUserRole(values.dogId)
-    if (role === "viewer") {
-      toast.error("คุณมีสิทธิ์เข้าดูอย่างเดียว (Viewer) ไม่สามารถบันทึกได้")
-      return
-    }
-
     const nowIso = new Date().toISOString()
     const nowDate = new Date()
 
@@ -84,8 +78,6 @@ function LogFormContainer() {
 
   const initialDogId = (queryDogId && dogs.some((d) => d.id === queryDogId)) ? queryDogId : (dogs[0]?.id ?? "")
   const [selectedDogId, setSelectedDogId] = useState(initialDogId)
-  const currentRole = selectedDogId ? getUserRole(selectedDogId) : null
-  const isViewer = currentRole === "viewer"
 
   const initialValues = {
     dogId: initialDogId,
@@ -95,8 +87,6 @@ function LogFormContainer() {
     <MealLogForm
       dogs={dogs}
       initialValues={initialValues}
-      readOnly={isViewer}
-      readOnlyMessage="คุณมีสิทธิ์เข้าดูอย่างเดียว (Viewer) ไม่สามารถบันทึกหรือแก้ไขมื้ออาหารของน้องหมาตัวนี้ได้"
       onDogChange={setSelectedDogId}
       onSubmit={handleSubmit}
     />

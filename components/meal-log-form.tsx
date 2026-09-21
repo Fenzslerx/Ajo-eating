@@ -40,16 +40,12 @@ export function MealLogForm({
   dogs,
   initialValues,
   submitLabel = "บันทึกมื้ออาหาร",
-  readOnly = false,
-  readOnlyMessage,
   onDogChange,
   onSubmit,
 }: {
   dogs: Dog[]
   initialValues?: Partial<MealLogFormValues>
   submitLabel?: string
-  readOnly?: boolean
-  readOnlyMessage?: string
   onDogChange?: (dogId: string) => void
   onSubmit: (values: MealLogFormValues) => void
 }) {
@@ -236,19 +232,13 @@ export function MealLogForm({
         />
       </div>
 
-      {readOnly && (
-        <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-center text-xs text-blue-600 dark:text-blue-400">
-          {readOnlyMessage || "คุณมีสิทธิ์เข้าดูอย่างเดียว (Viewer) ไม่สามารถบันทึกหรือแก้ไขมื้ออาหารได้"}
-        </div>
-      )}
-
       <Button
         type="submit"
         size="lg"
         className="min-h-12 rounded-full font-semibold"
-        disabled={!dogId || readOnly}
+        disabled={!dogId}
       >
-        {readOnly ? "ไม่มีสิทธิ์บันทึกข้อมูล (Viewer)" : submitLabel}
+        {submitLabel}
       </Button>
     </form>
   )
