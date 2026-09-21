@@ -30,6 +30,7 @@ export function MemberManager({ dog }: { dog: Dog }) {
     getPendingInvites,
     setMemberRole,
     removeMember,
+    load,
   } = useAppStore()
 
   const [invites, setInvites] = useState<DogInvite[]>([])
@@ -79,10 +80,12 @@ export function MemberManager({ dog }: { dog: Dog }) {
 
   async function handleRevoke(inviteId: string) {
     try {
+      setInvites((prev) => prev.filter((item) => item.id !== inviteId))
       await revokeInvite(inviteId)
       await reloadInvites()
       toast.success("ยกเลิกคำเชิญแล้ว")
     } catch (err: unknown) {
+      await reloadInvites()
       const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาด"
       toast.error(msg)
     }
@@ -91,6 +94,7 @@ export function MemberManager({ dog }: { dog: Dog }) {
   async function handleChangeRole(targetUserId: string, nextRole: "caretaker" | "viewer") {
     try {
       await setMemberRole(dog.id, targetUserId, nextRole)
+      await load()
       toast.success(`ปรับสิทธิ์เป็น ${ROLE_LABELS[nextRole]?.label || nextRole} เรียบร้อย`)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "ไม่สามารถเปลี่ยนสิทธิ์ได้"
@@ -102,6 +106,7 @@ export function MemberManager({ dog }: { dog: Dog }) {
     if (!confirm(`ต้องการนำคุณ "${memberLabel}" ออกจากการดูแลน้องหมาหรือไม่?`)) return
     try {
       await removeMember(dog.id, targetUserId)
+      await load()
       toast.success("นำสมาชิกออกแล้ว")
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "ไม่สามารถนำสมาชิกออกได้"

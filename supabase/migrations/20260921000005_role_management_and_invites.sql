@@ -237,26 +237,40 @@ begin
 end;
 $$;
 
--- F. get_dog_members (includes join date and role text)
+-- F. get_dog_members (includes join date-- 3.6 ดึงรายชื่อสมาชิกพร้อมอีเมล
+drop function if exists public.get_dog_members(uuid);
 create or replace function public.get_dog_members(target_dog_id uuid)
-returns table (user_id uuid, email text, role text, created_at timestamptz)
-language sql stable security definer set search_path = public, auth as $$
-  select dm.user_id, u.email::text, dm.role, dm.created_at
+returns table (
+  id uuid,
+  dog_id uuid,
+  user_id uuid,
+  role text,
+  created_at timestamptz,
+  email text
+)
+language sql
+security definer
+stable
+as $$
+  select 
+    dm.id,
+    dm.dog_id,
+    dm.user_id,
+    dm.role,
+    dm.created_at,
+    u.email::text
   from public.dog_members dm
-  join auth.users u on u.id = dm.user_id
+  left join auth.users u on u.id = dm.user_id
   where dm.dog_id = target_dog_id
-    and public.is_dog_member(target_dog_id)
-  order by
-    case dm.role
-      when 'owner' then 1
-      when 'caretaker' then 2
-      when 'viewer' then 3
-      else 4
-    end,
-    dm.created_at asc;
+    and exists (
+      select 1 from public.dog_members check_m
+      where check_m.dog_id = target_dog_id and check_m.user_id = auth.uid()
+    )
+  order by (case dm.role when 'owner' then 1 when 'caretaker' then 2 else 3 end), dm.created_at asc;
 $$;
 
--- G. get_dog_invites (for owner management view)
+-- 3.7 ดึงรายการคำเชิญของน้องหมา
+drop function if exists public.get_dog_invites(uuid);
 create or replace function public.get_dog_invites(target_dog_id uuid)
 returns table (
   id uuid,
