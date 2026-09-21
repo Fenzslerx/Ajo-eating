@@ -10,6 +10,7 @@ import {
   formatRecordedTime,
 } from "@/lib/meal-utils"
 import type { MealLog } from "@/lib/types"
+import { LazyImage } from "@/components/lazy-image"
 
 function getMealIcon(key: string) {
   if (key === "morning") return <Sun className="size-5 text-amber-500" />
@@ -77,14 +78,12 @@ export function MealCard({
         <div className="flex flex-col gap-2.5">
           {/* Photo Display (Read-Only) */}
           {log.photo_after && (
-            <div className="overflow-hidden rounded-xl border border-border bg-muted">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={log.photo_after}
-                alt={`รูปมื้อ${mealConfig.label}`}
-                className="h-48 w-full object-cover"
-              />
-            </div>
+            <LazyImage
+              src={log.photo_thumb || log.photo_after}
+              alt={`รูปมื้อ${mealConfig.label}`}
+              wrapperClassName="rounded-xl border border-border h-48 w-full"
+              className="h-full w-full object-cover"
+            />
           )}
 
           {/* Details (Food, Amount, Note) */}

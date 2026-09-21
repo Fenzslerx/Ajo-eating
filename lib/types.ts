@@ -31,6 +31,8 @@ export type MealLog = {
   note: string | null
   photo_before: string | null
   photo_after: string | null
+  photo_thumb?: string | null
+  photo_raw?: string | null
   by: string
   mealType?: MealType
   recordedAt?: string

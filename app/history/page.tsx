@@ -9,6 +9,7 @@ import { DateFilter, type DateRangeOption } from "@/components/date-filter"
 import { useAppStore } from "@/lib/app-store"
 import { getMealConfig, getLogMealKey } from "@/lib/meal-utils"
 import type { MealLog, MealStatus } from "@/lib/types"
+import { LazyImage } from "@/components/lazy-image"
 
 function withinRange(iso: string, range: DateRangeOption) {
   const days = range === "today" ? 0 : range === "7d" ? 7 : 30
@@ -102,13 +103,13 @@ export default function HistoryPage() {
                 >
                   <div className="flex items-center gap-3">
                     {log.photo_after ? (
-                      <img
-                        src={log.photo_after}
+                      <LazyImage
+                        src={log.photo_thumb || log.photo_after}
                         alt="รูปอาหาร"
-                        loading="lazy"
                         width={44}
                         height={44}
-                        className="size-11 rounded-lg border border-border object-cover"
+                        wrapperClassName="size-11 shrink-0 rounded-lg border border-border"
+                        className="size-11 object-cover"
                       />
                     ) : (
                       <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-lg">
@@ -169,7 +170,17 @@ export default function HistoryPage() {
                     <p>{selected.note}</p>
                   </div>
                 )}
-                {selected.photo_after && <div className="flex flex-col gap-1"><span className="text-xs text-muted-foreground">รูปหลังกิน</span><img src={selected.photo_after} alt="รูปมื้ออาหารหลังกิน" className="w-full rounded-xl border border-border object-cover" /></div>}
+                {selected.photo_after && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted-foreground">รูปหลังกิน</span>
+                    <LazyImage
+                      src={selected.photo_after}
+                      alt="รูปมื้ออาหารหลังกิน"
+                      wrapperClassName="w-full rounded-xl border border-border min-h-48"
+                      className="w-full object-cover rounded-xl"
+                    />
+                  </div>
+                )}
               </div>
             </>
           )}

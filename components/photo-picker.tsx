@@ -1,8 +1,9 @@
 "use client"
 
-import { useRef } from "react"
-import { Camera, X } from "lucide-react"
+import { useRef, useState } from "react"
+import { Camera, Loader2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { compressToDataUrl } from "@/lib/image-utils"
 
 export function PhotoPicker({
   value,
@@ -16,41 +17,24 @@ export function PhotoPicker({
   id?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const [isCompressing, setIsCompressing] = useState(false)
   const labelId = `${id}-label`
-
-  async function compressImage(file: File): Promise<string> {
-    return new Promise((resolve) => {
-      const img = new Image()
-      const objectUrl = URL.createObjectURL(file)
-      img.onload = () => {
-        URL.revokeObjectURL(objectUrl)
-        const MAX_SIDE = 1200
-        let { width, height } = img
-        if (width > MAX_SIDE || height > MAX_SIDE) {
-          const ratio = Math.min(MAX_SIDE / width, MAX_SIDE / height)
-          width = Math.round(width * ratio)
-          height = Math.round(height * ratio)
-        }
-        const canvas = document.createElement("canvas")
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext("2d")!
-        ctx.drawImage(img, 0, 0, width, height)
-        resolve(canvas.toDataURL("image/jpeg", 0.8))
-      }
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl)
-        resolve(URL.createObjectURL(file))
-      }
-      img.src = objectUrl
-    })
-  }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    const compressed = await compressImage(file)
-    onChange(compressed)
+    // Reset input so same file can be re-selected
+    e.target.value = ""
+    setIsCompressing(true)
+    try {
+      const { dataUrl } = await compressToDataUrl(file, { maxSide: 1200, quality: 0.82 })
+      onChange(dataUrl)
+    } catch {
+      // Fallback to uncompressed blob URL if canvas fails
+      onChange(URL.createObjectURL(file))
+    } finally {
+      setIsCompressing(false)
+    }
   }
 
   return (
@@ -58,11 +42,17 @@ export function PhotoPicker({
       <span className="text-sm font-medium text-foreground" id={labelId}>
         {label}
       </span>
-      {value ? (
+
+      {isCompressing ? (
+        <div className="flex size-28 flex-col items-center justify-center gap-2 rounded-xl border border-border bg-secondary/40">
+          <Loader2 className="size-5 animate-spin text-primary" />
+          <span className="text-[10px] text-muted-foreground">กำลังบีบอัดรูป...</span>
+        </div>
+      ) : value ? (
         <div className="relative w-fit">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={value || "/placeholder.svg"}
+            src={value}
             alt={`${label}ที่เลือก`}
             className="size-28 rounded-xl border border-border object-cover"
           />
@@ -87,6 +77,7 @@ export function PhotoPicker({
           <span className="text-xs">เพิ่มรูป</span>
         </Button>
       )}
+
       <input
         ref={inputRef}
         type="file"

@@ -21,6 +21,7 @@ import {
   Trash2,
   Upload,
   XCircle,
+  ImageIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -44,6 +45,7 @@ import {
   type MealConfigItem,
 } from "@/lib/meal-utils"
 import { createClient } from "@/lib/supabase/client"
+import { compressToBlob } from "@/lib/image-utils"
 
 export default function SettingsPage() {
   const {
@@ -210,6 +212,57 @@ export default function SettingsPage() {
       toast.error("เกิดข้อผิดพลาดในการล้างข้อมูล")
     } finally {
       setIsClearing(false)
+    }
+  }
+
+  // Image Migration State
+  const [isMigratingImages, setIsMigratingImages] = useState(false)
+  const [migrationStats, setMigrationStats] = useState<string | null>(null)
+
+  async function handleMigrateImages() {
+    setIsMigratingImages(true)
+    setMigrationStats(null)
+    try {
+      const s = createClient()
+      toast.info("กำลังตรวจสอบรูปภาพในระบบ...")
+      
+      let processed = 0
+      let failed = 0
+      
+      // Migrate meal photos from current logs
+      const photoLogs = logs.filter((l) => l.photo_raw && typeof l.photo_raw === "string")
+      for (const item of photoLogs) {
+        const rawPath = item.photo_raw!
+        try {
+          const { data: fileData, error: dlErr } = await s.storage.from("meal-photos").download(rawPath)
+          if (dlErr || !fileData) {
+            failed++
+            continue
+          }
+          // Only compress if larger than 300KB
+          if (fileData.size > 300 * 1024) {
+            const { blob, mimeType } = await compressToBlob(fileData, { maxSide: 1200, quality: 0.82 })
+            await s.storage.from("meal-photos").upload(rawPath, blob, {
+              contentType: mimeType,
+              cacheControl: "31536000",
+              upsert: true,
+            })
+            processed++
+          }
+        } catch {
+          failed++
+        }
+      }
+
+      const msg = `ประมวลผลเสร็จสิ้น: บีบอัดรูปไปแล้ว ${processed} รูป${failed > 0 ? ` (ข้าม/ไม่สำเร็จ ${failed} รูป)` : ""}`
+      setMigrationStats(msg)
+      toast.success(msg)
+      await load()
+    } catch (err) {
+      console.error("Migration error:", err)
+      toast.error("เกิดข้อผิดพลาดในการปรับขนาดรูปเก่า")
+    } finally {
+      setIsMigratingImages(false)
     }
   }
 
@@ -544,6 +597,31 @@ export default function SettingsPage() {
             >
               <Download className="size-3.5" />
               ดาวน์โหลด JSON
+            </Button>
+          </div>
+
+          <div className="flex items-center justify-between rounded-xl bg-secondary/30 p-3">
+            <div className="flex flex-col">
+              <span className="text-xs font-semibold text-foreground">ปรับขนาดและบีบอัดรูปเก่า (Image Optimization)</span>
+              <span className="text-[11px] text-muted-foreground">
+                สแกนรูปอาหารเก่าและบีบอัดให้เป็นมาตรฐาน WebP/JPEG คุณภาพ 80% (ขนาดเล็กลง ~80%)
+              </span>
+              {migrationStats && (
+                <span className="mt-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                  {migrationStats}
+                </span>
+              )}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-full gap-1 text-xs shrink-0"
+              disabled={isMigratingImages}
+              onClick={handleMigrateImages}
+            >
+              <ImageIcon className="size-3.5" />
+              {isMigratingImages ? "กำลังบีบอัด..." : "บีบอัดรูปเก่า"}
             </Button>
           </div>
 

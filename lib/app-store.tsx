@@ -52,14 +52,16 @@ const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 async function getCachedSignedUrl(
   client: ReturnType<typeof createClient>,
   bucket: "dog-photos" | "meal-photos",
-  storagePath: string | null
+  storagePath: string | null,
+  transform?: { width?: number; height?: number; resize?: "cover" | "contain" | "fill" }
 ): Promise<string | null> {
   if (!storagePath) return null;
   if (storagePath.startsWith("http://") || storagePath.startsWith("https://") || storagePath.startsWith("data:")) {
     return storagePath;
   }
 
-  const cacheKey = `${bucket}:${storagePath}`;
+  const transformKey = transform ? `:${transform.width}x${transform.height}_${transform.resize || "cover"}` : "";
+  const cacheKey = `${bucket}:${storagePath}${transformKey}`;
   const now = Date.now();
   const cached = signedUrlCache.get(cacheKey);
   if (cached && cached.expiresAt > now + 60000) {
@@ -67,18 +69,19 @@ async function getCachedSignedUrl(
   }
 
   try {
-    const { data, error } = await client.storage.from(bucket).createSignedUrl(storagePath, 3600);
+    const options: any = transform ? { transform } : undefined;
+    const { data, error } = await client.storage.from(bucket).createSignedUrl(storagePath, 86400, options);
     if (error || !data?.signedUrl) {
       const altBucket = bucket === "dog-photos" ? "meal-photos" : "dog-photos";
-      const altResult = await client.storage.from(altBucket).createSignedUrl(storagePath, 3600);
+      const altResult = await client.storage.from(altBucket).createSignedUrl(storagePath, 86400, options);
       if (altResult.data?.signedUrl) {
-        signedUrlCache.set(cacheKey, { url: altResult.data.signedUrl, expiresAt: now + 3500000 });
+        signedUrlCache.set(cacheKey, { url: altResult.data.signedUrl, expiresAt: now + 86000000 });
         return altResult.data.signedUrl;
       }
       return null;
     }
 
-    signedUrlCache.set(cacheKey, { url: data.signedUrl, expiresAt: now + 3500000 });
+    signedUrlCache.set(cacheKey, { url: data.signedUrl, expiresAt: now + 86000000 });
     return data.signedUrl;
   } catch (err) {
     captureSupabaseError(err, { operation: "storage", targetName: bucket });
@@ -86,11 +89,13 @@ async function getCachedSignedUrl(
   }
 }
 
-/** Map a raw DB log row to a MealLog, injecting signed photo URL. */
-const mapLog = (row: any, photo: string | null): MealLog => ({
+/** Map a raw DB log row to a MealLog, injecting signed photo URLs. */
+const mapLog = (row: any, photo: string | null, photoThumb?: string | null): MealLog => ({
   ...row,
   photo_before: null,
   photo_after: photo,
+  photo_thumb: photoThumb || photo,
+  photo_raw: row.photo ?? null,
 });
 
 /** Read custom profile attributes from local storage fallback */
@@ -176,9 +181,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const localProfiles = getLocalDogProfiles();
       const rawDogs = (d.data ?? []) as any[];
 
-      // Generate cached signed URLs for dog profile photos
+      // Generate cached signed URLs for dog profile photos (using thumb 200x200)
       const dogSigned = await Promise.all(
-        rawDogs.map((dog) => getCachedSignedUrl(s, "dog-photos", dog.photo))
+        rawDogs.map((dog) => getCachedSignedUrl(s, "dog-photos", dog.photo, { width: 200, height: 200, resize: "cover" }))
       );
 
       // Map DB dogs merged with localProfiles
@@ -215,11 +220,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setNotifications(notifRes.data ?? []);
       const logRows = l.data ?? [];
 
-      // Generate cached signed URLs in parallel for meal photos
-      const signed = await Promise.all(
-        logRows.map((row: any) => getCachedSignedUrl(s, "meal-photos", row.photo ?? null))
-      );
-      setLogs(logRows.map((row: any, i: number) => mapLog(row, signed[i])));
+      // Generate cached signed URLs in parallel for meal photos: both thumbnail and full
+      const [signedThumbs, signedFull] = await Promise.all([
+        Promise.all(logRows.map((row: any) => getCachedSignedUrl(s, "meal-photos", row.photo ?? null, { width: 200, height: 200, resize: "cover" }))),
+        Promise.all(logRows.map((row: any) => getCachedSignedUrl(s, "meal-photos", row.photo ?? null))),
+      ]);
+      setLogs(logRows.map((row: any, i: number) => mapLog(row, signedFull[i], signedThumbs[i])));
 
       // Load user profiles for author attribution across shared users
       const profileMap = new Map<string, Profile>();
@@ -405,10 +411,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           if (preview?.startsWith("blob:") || preview?.startsWith("data:")) {
             try {
               const blob = await fetch(preview).then((r) => r.blob());
-              const path = `${x.dog_id}/${crypto.randomUUID()}.jpg`;
+              const ext = blob.type.includes("webp") ? "webp" : "jpg";
+              const path = `${x.dog_id}/${crypto.randomUUID()}.${ext}`;
               const { error: uploadErr } = await s.storage
                 .from("meal-photos")
-                .upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: true });
+                .upload(path, blob, {
+                  contentType: blob.type || "image/jpeg",
+                  cacheControl: "31536000",
+                  upsert: true,
+                });
               if (!uploadErr) {
                 payload.photo = path;
               } else {
@@ -470,10 +481,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
           if ((x.photo_after?.startsWith("blob:") || x.photo_after?.startsWith("data:")) && x.dog_id) {
             const blob = await fetch(x.photo_after).then((r) => r.blob());
-            const path = `${x.dog_id}/${crypto.randomUUID()}.jpg`;
+            const ext = blob.type.includes("webp") ? "webp" : "jpg";
+            const path = `${x.dog_id}/${crypto.randomUUID()}.${ext}`;
             const { error: uploadErr } = await s.storage
               .from("meal-photos")
-              .upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: true });
+              .upload(path, blob, {
+                contentType: blob.type || "image/jpeg",
+                cacheControl: "31536000",
+                upsert: true,
+              });
             if (!uploadErr) {
               payload.photo = path;
             } else {
@@ -530,10 +546,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       if (photo?.startsWith("blob:") || photo?.startsWith("data:")) {
         try {
           const blob = await fetch(photo).then((r) => r.blob());
-          const uploadPath = `avatars/${crypto.randomUUID()}.jpg`;
+          const ext = blob.type.includes("webp") ? "webp" : "jpg";
+          const uploadPath = `avatars/${crypto.randomUUID()}.${ext}`;
           const { error: uploadErr } = await s.storage
             .from("dog-photos")
-            .upload(uploadPath, blob, { contentType: blob.type || "image/jpeg", upsert: true });
+            .upload(uploadPath, blob, {
+              contentType: blob.type || "image/jpeg",
+              cacheControl: "31536000",
+              upsert: true,
+            });
           if (!uploadErr) {
             storagePhotoPath = uploadPath;
           } else {
@@ -600,10 +621,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         // Upload photo if new blob
         if (updates.photo?.startsWith("blob:") || updates.photo?.startsWith("data:")) {
           const blob = await fetch(updates.photo).then((r) => r.blob());
-          const path = `avatars/${id}-${crypto.randomUUID()}.jpg`;
+          const ext = blob.type.includes("webp") ? "webp" : "jpg";
+          const path = `avatars/${id}-${crypto.randomUUID()}.${ext}`;
           const { error: uploadErr } = await s.storage
             .from("dog-photos")
-            .upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: true });
+            .upload(path, blob, {
+              contentType: blob.type || "image/jpeg",
+              cacheControl: "31536000",
+              upsert: true,
+            });
           if (!uploadErr) {
             payload.photo = path;
           }
