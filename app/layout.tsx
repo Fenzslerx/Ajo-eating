@@ -12,6 +12,12 @@ export const metadata: Metadata = {
   title: 'DogMeal — บันทึกมื้ออาหารน้องหมา',
   description: 'แอปสำหรับคนในบ้านร่วมกันบันทึกว่าน้องหมากินอาหารหมดหรือไม่',
   generator: 'v0.app',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'DogMeal',
+  },
+  manifest: '/manifest.webmanifest',
   icons: {
     icon: [
       {

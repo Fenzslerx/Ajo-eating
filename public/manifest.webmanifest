@@ -1,14 +1,60 @@
 {
-  "name": "DogMeal",
+  "name": "DogMeal — บันทึกมื้ออาหารน้องหมา",
   "short_name": "DogMeal",
-  "description": "บันทึกมื้ออาหารน้องหมา",
-  "lang": "th",
+  "description": "แอปสำหรับคนในบ้านร่วมกันบันทึกมื้ออาหารน้องหมา",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#fffaf5",
-  "theme_color": "#f97316",
+  "theme_color": "#ea580c",
+  "lang": "th",
+  "categories": ["lifestyle", "utilities"],
   "icons": [
-    { "src": "/icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "/icons/icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any" }
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "บันทึกมื้ออาหาร",
+      "short_name": "บันทึก",
+      "url": "/log",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "ดูสถิติ",
+      "short_name": "สถิติ",
+      "url": "/stats",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
   ]
 }
