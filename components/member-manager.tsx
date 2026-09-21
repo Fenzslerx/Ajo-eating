@@ -313,17 +313,23 @@ export function MemberManager({ dog }: { dog: Dog }) {
                 </p>
               </div>
 
-              <div className="flex items-center gap-1.5 rounded-xl border border-border bg-secondary/50 p-2 text-xs font-mono">
-                <span className="truncate flex-1 px-1">{createdUrl}</span>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 gap-1 rounded-lg shrink-0"
-                  onClick={() => handleCopy(createdUrl, "newly_created")}
-                >
-                  {copiedToken === "newly_created" ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-                  {copiedToken === "newly_created" ? "คัดลอกแล้ว" : "คัดลอก"}
-                </Button>
+              <div className="flex flex-col gap-2 rounded-xl border border-border bg-secondary/50 p-2.5">
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <p className="truncate text-xs font-mono text-foreground select-all">
+                      {createdUrl}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 gap-1.5 rounded-lg shrink-0 text-xs px-3"
+                    onClick={() => handleCopy(createdUrl, "newly_created")}
+                  >
+                    {copiedToken === "newly_created" ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                    {copiedToken === "newly_created" ? "คัดลอกแล้ว" : "คัดลอกลิงก์"}
+                  </Button>
+                </div>
               </div>
 
               <Button
