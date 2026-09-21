@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense, useEffect, useState } from "react"
-import { CalendarIcon, ChevronLeft, ChevronRight, PawPrint, Plus } from "lucide-react"
+import { AlertTriangle, CalendarIcon, ChevronLeft, ChevronRight, PawPrint, Plus, RefreshCw, WifiOff } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -27,8 +27,15 @@ function formatThaiDate(date: Date) {
   })
 }
 
+function formatThaiTime(date: Date) {
+  return date.toLocaleTimeString("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
 function TodayPageContent() {
-  const { dogs, logs, members, profileFor, isLoading, load } = useAppStore()
+  const { dogs, logs, members, profileFor, isLoading, load, syncError, isOfflineCache, cachedAt } = useAppStore()
   const searchParams = useSearchParams()
   
   // View mode: "today" | "history"
@@ -81,6 +88,27 @@ function TodayPageContent() {
     )
   }
 
+  // Fail loudly: If query failed and there is no offline cache available, render explicit error screen
+  if (syncError && dogs.length === 0) {
+    return (
+      <div className="flex min-h-[65vh] flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="flex size-16 items-center justify-center rounded-2xl bg-destructive/10 text-destructive shadow-sm">
+          <AlertTriangle className="size-8" />
+        </div>
+        <div className="flex flex-col gap-1.5 max-w-sm">
+          <h2 className="text-lg font-bold text-foreground">ไม่สามารถโหลดข้อมูลจากระบบได้</h2>
+          <p className="text-xs text-muted-foreground break-words leading-relaxed">
+            {syncError}
+          </p>
+        </div>
+        <Button onClick={() => void load()} className="gap-2 rounded-full px-5">
+          <RefreshCw className="size-4" />
+          ลองใหม่อีกครั้ง
+        </Button>
+      </div>
+    )
+  }
+
   if (dogs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 px-6 py-24 text-center">
@@ -97,6 +125,23 @@ function TodayPageContent() {
 
   return (
     <div className="flex flex-col gap-6 px-4 pt-4">
+      {/* Offline Cache Indicator Banner */}
+      {isOfflineCache && (
+        <div className="flex items-center gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-900 dark:text-amber-200">
+          <WifiOff className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="flex-1 leading-normal">
+            กำลังแสดงข้อมูลออฟไลน์ {cachedAt ? `(ล่าสุดเมื่อ ${formatThaiTime(cachedAt)} น.)` : ""}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void load()}
+            className="h-7 px-2 text-xs font-semibold text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
+          >
+            ลองเชื่อมต่อใหม่
+          </Button>
+        </div>
+      )}
       <header className="flex items-center justify-between pt-2">
         <div className="flex items-center gap-2">
           <PawPrint className="size-5 text-primary" aria-hidden="true" />

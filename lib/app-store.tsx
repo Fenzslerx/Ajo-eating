@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { flushQueuedLogs, queueLog } from "@/lib/offline-queue";
-import { DOG_PROFILE_STORAGE_KEY, resolveMealKeyForRecord, formatRecordedTime } from "@/lib/meal-utils";
+import { resolveMealKeyForRecord, formatRecordedTime } from "@/lib/meal-utils";
 import type { AppNotification, Dog, DogInvite, DogMember, MealLog, Profile, Schedule } from "./types";
 import { captureSupabaseError } from "@/lib/sentry-reporter";
 
@@ -18,6 +18,8 @@ type Store = {
   pendingCount: number;
   isOnline: boolean;
   isLoading: boolean;
+  isOfflineCache: boolean;
+  cachedAt: Date | null;
   lastSyncedAt: Date | null;
   syncError: string | null;
   load: () => Promise<void>;
@@ -112,17 +114,6 @@ const mapLog = (row: any, photo: string | null, photoThumb?: string | null): Mea
   recordedAt: row.recordedAt || formatRecordedTime(new Date(row.at)),
 });
 
-/** Read custom profile attributes from local storage fallback */
-function getLocalDogProfiles(): Record<string, { breed?: string | null; birthdate?: string | null; photo?: string | null; name?: string }> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem(DOG_PROFILE_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
 // ─── provider ─────────────────────────────────────────────────────────────────
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
@@ -137,6 +128,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOfflineCache, setIsOfflineCache] = useState(false);
+  const [cachedAt, setCachedAt] = useState<Date | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
@@ -181,6 +174,23 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
       if (d.error) {
         captureSupabaseError(d.error, { operation: "select", targetName: "dogs", userId: user.id });
+        // Fail loudly: if dogs query failed and we are offline, attempt offline cache fallback
+        if (!navigator.onLine) {
+          const cachedDogsRaw = localStorage.getItem(`cache:${user.id}:dogs`);
+          if (cachedDogsRaw) {
+            try {
+              const cachedData = JSON.parse(cachedDogsRaw);
+              setDogs(cachedData.dogs || []);
+              setIsOfflineCache(true);
+              setCachedAt(cachedData.cachedAt ? new Date(cachedData.cachedAt) : new Date());
+              setSyncError(null);
+              return;
+            } catch {
+              // invalid json cache
+            }
+          }
+        }
+        throw new Error(`ไม่สามารถโหลดข้อมูลน้องหมาได้: ${d.error.message}`);
       }
       if (sc.error) {
         captureSupabaseError(sc.error, { operation: "select", targetName: "schedules", userId: user.id });
@@ -192,7 +202,6 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         captureSupabaseError(notifRes.error, { operation: "select", targetName: "notifications", userId: user.id });
       }
 
-      const localProfiles = getLocalDogProfiles();
       const rawDogs = (d.data ?? []) as any[];
 
       // Generate cached signed URLs for dog profile photos (using thumb 200x200)
@@ -200,36 +209,29 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         rawDogs.map((dog) => getCachedSignedUrl(s, "dog-photos", dog.photo, { width: 200, height: 200, resize: "cover" }))
       );
 
-      // Map DB dogs merged with localProfiles
-      const seenDogIds = new Set<string>();
-      const dogRows: Dog[] = rawDogs.map((dog, idx) => {
-        seenDogIds.add(dog.id);
-        const stored = localProfiles[dog.id] || {};
-        return {
-          id: dog.id,
-          name: stored.name || dog.name,
-          photo: stored.photo || dogSigned[idx] || null,
-          owner_id: dog.owner_id,
-          breed: stored.breed ?? dog.breed ?? null,
-          birthdate: stored.birthdate ?? dog.birthdate ?? null,
-        };
-      });
+      // Single source of truth: Map DB dogs only
+      const dogRows: Dog[] = rawDogs.map((dog, idx) => ({
+        id: dog.id,
+        name: dog.name,
+        photo: dogSigned[idx] || dog.photo || null,
+        owner_id: dog.owner_id,
+        breed: dog.breed ?? null,
+        birthdate: dog.birthdate ?? null,
+      }));
 
-      // If local profiles contain newly added dog not yet returned by DB query
-      Object.entries(localProfiles).forEach(([id, stored]) => {
-        if (!seenDogIds.has(id) && stored.name) {
-          dogRows.push({
-            id,
-            name: stored.name,
-            photo: stored.photo || null,
-            owner_id: user.id,
-            breed: stored.breed ?? null,
-            birthdate: stored.birthdate ?? null,
-          });
-        }
-      });
+      // Cache strictly partitioned per user
+      try {
+        localStorage.setItem(
+          `cache:${user.id}:dogs`,
+          JSON.stringify({ dogs: dogRows, cachedAt: new Date().toISOString() })
+        );
+      } catch {
+        // LocalStorage quota or blocked
+      }
 
       setDogs(dogRows);
+      setIsOfflineCache(false);
+      setCachedAt(null);
       setSchedules(sc.data ?? []);
       setNotifications(notifRes.data ?? []);
       const logRows = l.data ?? [];
@@ -336,8 +338,20 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         setLogs([]);
         setMembers([]);
         setProfiles([]);
-        setUserId("");
+        setUserId((prevId) => {
+          if (prevId) {
+            try {
+              localStorage.removeItem(`cache:${prevId}:dogs`);
+            } catch {
+              // ignore
+            }
+          }
+          return "";
+        });
         setUserEmail("");
+        setIsOfflineCache(false);
+        setCachedAt(null);
+        setSyncError(null);
         setIsLoading(false);
       }
     });
@@ -393,6 +407,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   // ─── mutations ──────────────────────────────────────────────────────────────
 
   const signOut = useCallback(async () => {
+    if (userId) {
+      try {
+        localStorage.removeItem(`cache:${userId}:dogs`);
+      } catch {
+        // ignore
+      }
+    }
     const s = createClient();
     await s.auth.signOut();
     setDogs([]);
@@ -403,8 +424,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setProfiles([]);
     setUserId("");
     setUserEmail("");
+    setIsOfflineCache(false);
+    setCachedAt(null);
+    setSyncError(null);
     window.location.href = "/login";
-  }, []);
+  }, [userId]);
 
   const addLog = useCallback(
     (x: Omit<MealLog, "id" | "by">) => {
@@ -603,10 +627,6 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         throw new Error("ระบบไม่สามารถระบุ ID ของน้องหมาที่สร้างขึ้นได้");
       }
 
-      const localProfiles = getLocalDogProfiles();
-      localProfiles[dogId] = { name: cleanName, breed, birthdate, photo: storagePhotoPath };
-      localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(localProfiles));
-
       const newDogEntity: Dog = {
         id: dogId,
         name: dogRow.name || cleanName,
@@ -657,16 +677,6 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           if (error) console.error("updateDog Supabase error:", error.message);
         }
 
-        // 2. Update local profile storage (dogProfile)
-        const local = getLocalDogProfiles();
-        local[id] = {
-          ...local[id],
-          name: updates.name ?? local[id]?.name,
-          breed: updates.breed !== undefined ? updates.breed : local[id]?.breed,
-          birthdate: updates.birthdate !== undefined ? updates.birthdate : local[id]?.birthdate,
-          photo: updates.photo !== undefined ? updates.photo : local[id]?.photo,
-        };
-        localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
         window.dispatchEvent(new CustomEvent("dog-profile-changed", { detail: { id, updates } }));
 
         // Optimistic UI state update immediately
@@ -688,9 +698,6 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         const { error } = await createClient().from("dogs").delete().eq("id", id);
         if (error) console.error("removeDog error:", error.message);
 
-        const local = getLocalDogProfiles();
-        delete local[id];
-        localStorage.setItem(DOG_PROFILE_STORAGE_KEY, JSON.stringify(local));
         window.dispatchEvent(new CustomEvent("dog-profile-changed", { detail: { id, deleted: true } }));
 
         setDogs((prev) => prev.filter((d) => d.id !== id));
@@ -711,7 +718,6 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         s.from("schedules").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
         s.from("dogs").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
       ]);
-      localStorage.removeItem(DOG_PROFILE_STORAGE_KEY);
       localStorage.removeItem("custom_meal_config");
       setDogs([]);
       setSchedules([]);
@@ -904,6 +910,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       pendingCount: pending,
       isOnline: online,
       isLoading,
+      isOfflineCache,
+      cachedAt,
       lastSyncedAt,
       syncError,
       load,
@@ -930,7 +938,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }),
     [
       userId, userEmail, profiles, dogs, schedules, logs, members, notifications,
-      pending, online, isLoading, lastSyncedAt, syncError,
+      pending, online, isLoading, isOfflineCache, cachedAt, lastSyncedAt, syncError,
       load, signOut, addLog, updateLog, removeLog, addDog, updateDog, removeDog, clearAllData,
       addSchedule, removeSchedule, addMember, removeMember, setMemberRole, markNotificationAsRead,
       getUserRole, createInviteLink, revokeInvite, getPendingInvites, acceptInvite,
