@@ -22,11 +22,13 @@ export function MealCard({
   log,
   displayStatus,
   dogId,
+  authorName,
 }: {
   mealConfig: MealConfigItem
   log: MealLog | null
   displayStatus: MealDisplayStatus
   dogId: string
+  authorName?: string | null
 }) {
   const recordedTimeDisplay = log?.recordedAt || (log?.at ? formatRecordedTime(log.at) : null)
 
@@ -42,8 +44,11 @@ export function MealCard({
             <span className="font-semibold text-foreground">{mealConfig.label}</span>
             {displayStatus === "recorded" && recordedTimeDisplay ? (
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Clock className="size-3 text-primary" />
-                บันทึกเมื่อ {recordedTimeDisplay} น.
+                <Clock className="size-3 text-primary shrink-0" />
+                <span>
+                  บันทึกเมื่อ {recordedTimeDisplay} น.
+                  {authorName && <span className="text-foreground/80 font-medium"> โดย {authorName}</span>}
+                </span>
               </span>
             ) : (
               <span className="text-xs text-muted-foreground">

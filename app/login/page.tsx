@@ -19,10 +19,16 @@ function LoginForm() {
     setLoading(true);
     setMessage("");
     const supabase = createClient();
+    const redirectParam = searchParams.get("redirect");
+    const callbackUrl = new URL(`${location.origin}/auth/callback`);
+    if (redirectParam && redirectParam.startsWith("/")) {
+      callbackUrl.searchParams.set("next", redirectParam);
+    }
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${location.origin}/auth/callback`,
+        redirectTo: callbackUrl.toString(),
         queryParams: { prompt: "select_account" },
       },
     });

@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
+import { MemberManager } from "@/components/member-manager"
 import {
   Dialog,
   DialogContent,
@@ -497,6 +498,11 @@ export default function SettingsPage() {
           * รองรับการเปิด/ปิดสวิตช์ในระบบเบื้องต้น ระบบแจ้งเตือน Push Notification บนมือถือจะเชื่อมต่อในระยะถัดไป
         </p>
       </Card>
+
+      {/* ─────────────────────────────────────────────────────────────
+          3.5 สมาชิกและการแชร์สิทธิ์ (Member Management & Invites)
+      ───────────────────────────────────────────────────────────── */}
+      {activeDog && <MemberManager dog={activeDog} />}
 
       {/* ─────────────────────────────────────────────────────────────
           4. การจัดการข้อมูล (Data Management)

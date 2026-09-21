@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { createClient } from "@/lib/supabase/client";
 import { flushQueuedLogs, queueLog } from "@/lib/offline-queue";
 import { DOG_PROFILE_STORAGE_KEY } from "@/lib/meal-utils";
-import type { AppNotification, Dog, DogMember, MealLog, Profile, Schedule } from "./types";
+import type { AppNotification, Dog, DogInvite, DogMember, MealLog, Profile, Schedule } from "./types";
 import { captureSupabaseError } from "@/lib/sentry-reporter";
 
 type Store = {
@@ -30,10 +30,15 @@ type Store = {
   addSchedule: (x: Omit<Schedule, "id">) => void;
   removeSchedule: (id: string) => void;
   addMember: (dogId: string, email: string) => void;
-  removeMember: (dogId: string, userId: string) => void;
-  setMemberRole: (dogId: string, userId: string, role: "member" | "editor" | "viewer") => void;
+  removeMember: (dogId: string, userId: string) => Promise<void>;
+  setMemberRole: (dogId: string, userId: string, role: "caretaker" | "viewer") => Promise<void>;
   profileFor: (id: string) => Profile | undefined;
   markNotificationAsRead: (id: string) => Promise<void>;
+  getUserRole: (dogId: string) => "owner" | "caretaker" | "viewer" | null;
+  createInviteLink: (dogId: string, role: "caretaker" | "viewer") => Promise<string>;
+  revokeInvite: (inviteId: string) => Promise<void>;
+  getPendingInvites: (dogId: string) => Promise<DogInvite[]>;
+  acceptInvite: (token: string) => Promise<Dog>;
 };
 
 const Context = createContext<Store | null>(null);
@@ -667,38 +672,100 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const removeMember = useCallback(
-    (dogId: string, uid: string) => {
-      void (async () => {
-        try {
-          const { error } = await createClient().rpc("remove_dog_member", {
-            target_dog_id: dogId,
-            target_user_id: uid,
-          });
-          if (error) console.error("removeMember error:", error.message);
-          await load();
-        } catch (err) {
-          console.error("removeMember exception:", err);
-        }
-      })();
+    async (dogId: string, targetUserId: string) => {
+      const s = createClient();
+      const { error: delErr } = await s.rpc("remove_dog_member", {
+        target_dog_id: dogId,
+        target_user_id: targetUserId,
+      });
+      if (delErr) {
+        captureSupabaseError(delErr, { operation: "rpc", targetName: "remove_dog_member" });
+        throw new Error(delErr.message || "ไม่สามารถลบสมาชิกได้");
+      }
+      await load();
     },
     [load]
   );
 
   const setMemberRole = useCallback(
-    (dogId: string, uid: string, role: "member" | "editor" | "viewer") => {
-      void (async () => {
-        try {
-          const { error } = await createClient().rpc("set_dog_member_role", {
-            target_dog_id: dogId,
-            target_user_id: uid,
-            target_role: role,
-          });
-          if (error) console.error("setMemberRole error:", error.message);
-          await load();
-        } catch (err) {
-          console.error("setMemberRole exception:", err);
-        }
-      })();
+    async (dogId: string, targetUserId: string, nextRole: "caretaker" | "viewer") => {
+      const s = createClient();
+      const { error: roleErr } = await s.rpc("set_dog_member_role", {
+        target_dog_id: dogId,
+        target_user_id: targetUserId,
+        target_role: nextRole,
+      });
+      if (roleErr) {
+        captureSupabaseError(roleErr, { operation: "rpc", targetName: "set_dog_member_role" });
+        throw new Error(roleErr.message || "ไม่สามารถเปลี่ยนสิทธิ์ได้");
+      }
+      await load();
+    },
+    [load]
+  );
+
+  const getUserRole = useCallback(
+    (dogId: string): "owner" | "caretaker" | "viewer" | null => {
+      if (!userId) return null;
+      const targetDog = dogs.find((d) => d.id === dogId);
+      if (targetDog?.owner_id === userId) return "owner";
+      const membership = members.find((m) => m.dog_id === dogId && m.user_id === userId);
+      if (!membership) return null;
+      if (membership.role === "owner") return "owner";
+      if (membership.role === "viewer") return "viewer";
+      return "caretaker";
+    },
+    [userId, dogs, members]
+  );
+
+  const createInviteLink = useCallback(async (dogId: string, role: "caretaker" | "viewer"): Promise<string> => {
+    const s = createClient();
+    const { data: generatedToken, error: inviteErr } = await s.rpc("create_invite_link", {
+      dog_id_input: dogId,
+      role_input: role,
+    });
+    if (inviteErr) {
+      captureSupabaseError(inviteErr, { operation: "rpc", targetName: "create_invite_link" });
+      throw new Error(inviteErr.message || "ไม่สามารถสร้างลิงก์เชิญได้");
+    }
+    return generatedToken as string;
+  }, []);
+
+  const revokeInvite = useCallback(async (inviteId: string): Promise<void> => {
+    const s = createClient();
+    const { error: revokeErr } = await s.rpc("revoke_invite", {
+      invite_id_input: inviteId,
+    });
+    if (revokeErr) {
+      captureSupabaseError(revokeErr, { operation: "rpc", targetName: "revoke_invite" });
+      throw new Error(revokeErr.message || "ไม่สามารถยกเลิกคำเชิญได้");
+    }
+  }, []);
+
+  const getPendingInvites = useCallback(async (dogId: string): Promise<DogInvite[]> => {
+    const s = createClient();
+    const { data: inviteRows, error: fetchErr } = await s.rpc("get_dog_invites", {
+      target_dog_id: dogId,
+    });
+    if (fetchErr) {
+      captureSupabaseError(fetchErr, { operation: "rpc", targetName: "get_dog_invites" });
+      return [];
+    }
+    return (inviteRows ?? []) as DogInvite[];
+  }, []);
+
+  const acceptInvite = useCallback(
+    async (token: string): Promise<Dog> => {
+      const s = createClient();
+      const { data: joinedDog, error: acceptErr } = await s.rpc("accept_invite", {
+        token_input: token,
+      });
+      if (acceptErr) {
+        captureSupabaseError(acceptErr, { operation: "rpc", targetName: "accept_invite" });
+        throw new Error(acceptErr.message || "ไม่สามารถรับคำเชิญได้");
+      }
+      await load();
+      return joinedDog as Dog;
     },
     [load]
   );
@@ -752,6 +819,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       removeMember,
       setMemberRole,
       markNotificationAsRead,
+      getUserRole,
+      createInviteLink,
+      revokeInvite,
+      getPendingInvites,
+      acceptInvite,
       profileFor: (id) => profiles.find((p) => p.id === id),
     }),
     [
@@ -759,6 +831,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       pending, online, isLoading,
       load, signOut, addLog, updateLog, removeLog, addDog, updateDog, removeDog, clearAllData,
       addSchedule, removeSchedule, addMember, removeMember, setMemberRole, markNotificationAsRead,
+      getUserRole, createInviteLink, revokeInvite, getPendingInvites, acceptInvite,
     ]
   );
 

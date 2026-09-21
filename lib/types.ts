@@ -36,12 +36,24 @@ export type MealLog = {
   recordedAt?: string
 }
 
-export type MemberRole = "owner" | "member" | "editor" | "viewer"
+export type MemberRole = "owner" | "caretaker" | "viewer" | "member" | "editor"
 
 export type DogMember = {
   dog_id: string
   user_id: string
   role: MemberRole
+  email?: string
+  created_at?: string
+}
+
+export type DogInvite = {
+  id: string
+  dog_id: string
+  token: string
+  role: "caretaker" | "viewer"
+  status: "pending" | "accepted" | "revoked" | "expired"
+  expires_at: string
+  created_at: string
 }
 
 export type Profile = {

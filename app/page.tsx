@@ -28,7 +28,7 @@ function formatThaiDate(date: Date) {
 }
 
 function TodayPageContent() {
-  const { dogs, logs, isLoading, load } = useAppStore()
+  const { dogs, logs, members, isLoading, load } = useAppStore()
   const searchParams = useSearchParams()
   
   // View mode: "today" | "history"
@@ -220,6 +220,8 @@ function TodayPageContent() {
               {activeMealConfigs.map((mealConfig) => {
                 const log = dogLogsDay.find((l) => getLogMealKey(l, activeMealConfigs) === mealConfig.key) ?? null
                 const displayStatus = getMealStatus(mealConfig.key, dogLogsDay, activeDate, undefined, activeMealConfigs)
+                const authorMember = log?.by ? members.find((m) => m.dog_id === dog.id && m.user_id === log.by) : null
+                const authorName = authorMember?.email ? authorMember.email.split("@")[0] : null
 
                 return (
                   <MealCard
@@ -228,6 +230,7 @@ function TodayPageContent() {
                     log={log}
                     displayStatus={displayStatus}
                     dogId={dog.id}
+                    authorName={authorName}
                   />
                 )
               })}
