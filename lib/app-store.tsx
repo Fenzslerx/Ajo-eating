@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { flushQueuedLogs, queueLog } from "@/lib/offline-queue";
-import { DOG_PROFILE_STORAGE_KEY } from "@/lib/meal-utils";
+import { DOG_PROFILE_STORAGE_KEY, resolveMealKeyForRecord, formatRecordedTime } from "@/lib/meal-utils";
 import type { AppNotification, Dog, DogInvite, DogMember, MealLog, Profile, Schedule } from "./types";
 import { captureSupabaseError } from "@/lib/sentry-reporter";
 
@@ -101,13 +101,15 @@ async function getCachedSignedUrl(
   }
 }
 
-/** Map a raw DB log row to a MealLog, injecting signed photo URLs. */
+/** Map a raw DB log row to a MealLog, injecting signed photo URLs and deriving meal attributes. */
 const mapLog = (row: any, photo: string | null, photoThumb?: string | null): MealLog => ({
   ...row,
   photo_before: null,
   photo_after: photo,
   photo_thumb: photoThumb || photo,
   photo_raw: row.photo ?? null,
+  mealType: row.mealType || resolveMealKeyForRecord(new Date(row.at)),
+  recordedAt: row.recordedAt || formatRecordedTime(new Date(row.at)),
 });
 
 /** Read custom profile attributes from local storage fallback */
@@ -171,9 +173,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setUserEmail(user.email || "");
 
       const [d, sc, l, notifRes] = await Promise.all([
-        s.from("dogs").select("id,name,photo,owner_id,breed,birthdate"),
+        s.from("dogs").select("id,name,photo,owner_id,created_at"),
         s.from("schedules").select("id,dog_id,label,time"),
-        s.from("logs").select("id,dog_id,schedule_id,at,status,amount_g,food,note,photo,by,mealType,recordedAt").order("at", { ascending: false }),
+        s.from("logs").select("id,dog_id,schedule_id,at,status,amount_g,food,note,photo,by,created_at").order("at", { ascending: false }),
         s.from("notifications").select("id,dog_id,user_id,meal_key,schedule_id,message,is_read,created_at").order("created_at", { ascending: false }).limit(50),
       ]);
 

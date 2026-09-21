@@ -155,6 +155,50 @@ create policy "authenticated delete photos" on storage.objects
   );
 
 -- ==============================================================================
--- PART 7: Reload PostgREST schema cache
+-- PART 7: Table schema adjustments (Make sure all client-used columns exist)
+-- ==============================================================================
+alter table public.dogs add column if not exists breed text;
+alter table public.dogs add column if not exists birthdate text;
+
+-- ==============================================================================
+-- PART 8: Shared functions & cleanup obsolete invite functions
+-- ==============================================================================
+drop function if exists public.create_invite_link(uuid, text);
+drop function if exists public.accept_invite(text);
+drop function if exists public.revoke_invite(uuid);
+drop function if exists public.get_dog_invites(uuid);
+
+-- Update get_dog_members so any authenticated user can view members without membership check
+create or replace function public.get_dog_members(target_dog_id uuid)
+returns table (
+  id uuid,
+  dog_id uuid,
+  user_id uuid,
+  role text,
+  created_at timestamptz,
+  email text
+)
+language sql
+security definer
+stable
+as $$
+  select 
+    dm.id,
+    dm.dog_id,
+    dm.user_id,
+    dm.role,
+    dm.created_at,
+    u.email::text
+  from public.dog_members dm
+  left join auth.users u on u.id = dm.user_id
+  where dm.dog_id = target_dog_id
+  order by (case dm.role when 'owner' then 1 when 'caretaker' then 2 else 3 end), dm.created_at asc;
+$$;
+
+grant execute on function public.get_dog_members(uuid) to authenticated;
+
+-- ==============================================================================
+-- PART 9: Reload PostgREST schema cache
 -- ==============================================================================
 notify pgrst, 'reload schema';
+
