@@ -201,6 +201,7 @@ drop function if exists public.create_invite_link(uuid, text);
 drop function if exists public.accept_invite(text);
 drop function if exists public.revoke_invite(uuid);
 drop function if exists public.get_dog_invites(uuid);
+drop function if exists public.get_dog_members(uuid);
 
 -- Update get_dog_members so any authenticated user can view members without membership check
 create or replace function public.get_dog_members(target_dog_id uuid)
